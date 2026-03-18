@@ -1,0 +1,113 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'manage' }) %>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="cats_title">Danh mục</h1>
+          <p data-i18n="cats_subtitle">Quản lý các danh mục chi tiêu</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/manage" class="btn-cancel" style="text-decoration:none;padding:9px 16px;border-radius:8px">
+            <i class="fa-solid fa-arrow-left"></i> <span data-i18n="btn_back">Quay lại</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <div class="sources-page">
+        <!-- Add / Edit form -->
+        <div class="sources-form-card">
+          <h3 id="formTitle" data-i18n="cat_form_add">Thêm danh mục mới</h3>
+          <div class="sources-form-row">
+            <input type="hidden" id="editId">
+            <input type="text" id="catName" class="expense-field" data-i18n-placeholder="cat_name_ph" placeholder="Tên danh mục (vd: Ăn uống, Xăng xe...)">
+            <button id="catSubmit" class="btn-primary">
+              <i class="fa-solid fa-plus"></i> <span data-i18n="btn_add">Thêm</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- List -->
+        <div class="transactions">
+          <div class="section-header">
+            <h2 id="catCount">Đang tải...</h2>
+          </div>
+          <div id="catList" class="source-list"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <%- include('partials/_scripts') %>
+  <script>
+    function t(key) {
+      const lang = localStorage.getItem('lang') || 'vi';
+      return (translations[lang] && translations[lang][key]) || translations['vi'][key] || key;
+    }
+
+    async function loadCategories() {
+      const res = await fetch('/categories/list');
+      const data = await res.json();
+      document.getElementById('catCount').textContent = data.length + ' ' + t('cats_count');
+      const list = document.getElementById('catList');
+      if (!data.length) {
+        list.innerHTML = '<div class="empty-sources"><i class="fa-solid fa-inbox"></i><p>' + t('cat_empty') + '</p></div>';
+        return;
+      }
+      list.innerHTML = data.map(c => `
+        <div class="source-item">
+          <div class="source-item-left">
+            <span class="source-name">${c.name}</span>
+          </div>
+          <div class="source-item-actions">
+            <button class="btn-edit" onclick="editCat('${c._id}','${c.name.replace(/'/g,"\\'")}')">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="btn-delete" onclick="deleteCat('${c._id}')">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('catSubmit').onclick = async function() {
+      const id   = document.getElementById('editId').value;
+      const name = document.getElementById('catName').value.trim();
+      if (!name) return;
+
+      const url  = id ? '/categories/update' : '/categories/add';
+      const body = id ? { id, name } : { name };
+      await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+      document.getElementById('editId').value = '';
+      document.getElementById('catName').value = '';
+      document.getElementById('formTitle').textContent = t('cat_form_add');
+      document.getElementById('catSubmit').innerHTML = '<i class="fa-solid fa-plus"></i> ' + t('btn_add');
+      loadCategories();
+    };
+
+    function editCat(id, name) {
+      document.getElementById('editId').value = id;
+      document.getElementById('catName').value = name;
+      document.getElementById('formTitle').textContent = t('cat_form_edit');
+      document.getElementById('catSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> ' + t('btn_save');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteCat(id) {
+      if (!confirm(t('cat_confirm_delete'))) return;
+      await fetch('/categories/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      loadCategories();
+    }
+
+    loadCategories();
+    document.addEventListener('langChanged', loadCategories);
+  </script>
+<%- include('partials/_foot') %>

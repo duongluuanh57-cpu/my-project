@@ -1,0 +1,356 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'stats' }) %>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="stats_title">Thống kê</h1>
+          <p data-i18n="stats_subtitle">Hiệu suất tài chính theo tháng</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <!-- Year selector + Summary cards -->
+      <div class="stats-top-row">
+        <div class="stats-summary-cards" id="summaryCards"></div>
+        <div class="stats-year-wrap">
+          <button class="stats-year-btn" id="yearPrev"><i class="fa-solid fa-chevron-left"></i></button>
+          <span class="stats-year-label" id="yearLabel">2025</span>
+          <button class="stats-year-btn" id="yearNext"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+      </div>
+
+      <!-- Chart card -->
+      <div class="stats-chart-card">
+        <div class="stats-chart-header">
+          <div>
+            <div class="stats-chart-title" data-i18n="stats_overview">Tổng quan</div>
+            <div class="stats-chart-sub" data-i18n="stats_monthly_perf">Hiệu suất hàng tháng trong năm</div>
+          </div>
+          <div class="stats-tab-group" id="tabGroup">
+            <button class="stats-tab active" data-tab="income" data-i18n="filter_received">Thu nhập</button>
+            <button class="stats-tab" data-tab="expense" data-i18n="filter_expense">Chi tiêu</button>
+            <button class="stats-tab" data-tab="balance" data-i18n="filter_balance">Số dư</button>
+          </div>
+        </div>
+        <div class="stats-chart-wrap">
+          <canvas id="statsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Weekly bar chart -->
+      <div class="stats-chart-card">
+        <div class="stats-chart-header">
+          <div>
+            <div class="stats-chart-title" data-i18n="stats_weekly">Chi tiêu theo tuần</div>
+            <div class="stats-chart-sub" id="weekChartSub"></div>
+          </div>
+          <div class="stats-tab-group" id="weekTabGroup">
+            <button class="stats-tab active" data-wtab="expense" data-i18n="filter_expense">Chi tiêu</button>
+            <button class="stats-tab" data-wtab="income" data-i18n="filter_received">Thu nhập</button>
+          </div>
+        </div>
+        <div class="stats-chart-wrap">
+          <canvas id="weekChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Monthly breakdown table -->
+      <div class="transactions">
+        <div class="section-header">
+          <h2 data-i18n="stats_monthly_detail">Chi tiết theo tháng</h2>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="stats_col_month">Tháng</th>
+                <th style="text-align:right" data-i18n="filter_received">Thu nhập</th>
+                <th style="text-align:right" data-i18n="filter_expense">Chi tiêu</th>
+                <th style="text-align:right" data-i18n="stats_col_end_bal">Số dư cuối</th>
+                <th style="text-align:right" data-i18n="stats_col_diff">Chênh lệch</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <%- include('partials/_scripts') %>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    function t(key) {
+      const lang = localStorage.getItem('lang') || 'vi';
+      return (translations[lang] && translations[lang][key]) || translations['vi'][key] || key;
+    }
+
+    function getMonths() {
+      return t('month_names_short').split(',');
+    }
+    function getMonthsFull() {
+      return t('month_names').split(',');
+    }
+    let currentYear = new Date().getFullYear();
+    let activeTab = 'income';
+    let chartInstance = null;
+    let monthlyData = {}; // { year: { income:[], expense:[], balance:[] } }
+
+    function fmt(n) { return Number(n).toLocaleString('vi-VN') + ' ₫'; }
+
+    function fmtK(n) {
+      if (n >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/,'') + 'B';
+      if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
+      if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'') + 'K';
+      return n;
+    }
+
+    async function loadData() {
+      const [balRes, incRes, expRes] = await Promise.all([
+        fetch('/balance/history'),
+        fetch('/income/history'),
+        fetch('/expense/history')
+      ]);
+      const [bal, inc, exp] = await Promise.all([balRes.json(), incRes.json(), expRes.json()]);
+
+      rawInc = inc;
+      rawExp = exp;
+
+      // Group by year-month
+      const grouped = {};
+
+      inc.filter(r => r.checkedIn).forEach(r => {
+        const d = new Date(r.date);
+        const y = d.getFullYear(), m = d.getMonth();
+        if (!grouped[y]) grouped[y] = { income: new Array(12).fill(0), expense: new Array(12).fill(0), balance: new Array(12).fill(null) };
+        grouped[y].income[m] += r.total;
+      });
+
+      exp.forEach(r => {
+        const d = new Date(r.date);
+        const y = d.getFullYear(), m = d.getMonth();
+        if (!grouped[y]) grouped[y] = { income: new Array(12).fill(0), expense: new Array(12).fill(0), balance: new Array(12).fill(null) };
+        grouped[y].expense[m] += r.total;
+      });
+
+      // Balance: lấy giá trị mới nhất trong mỗi tháng
+      const balSorted = bal.slice().sort((a,b) => new Date(a.date)-new Date(b.date));
+      balSorted.forEach(r => {
+        const d = new Date(r.date);
+        const y = d.getFullYear(), m = d.getMonth();
+        if (!grouped[y]) grouped[y] = { income: new Array(12).fill(0), expense: new Array(12).fill(0), balance: new Array(12).fill(null) };
+        grouped[y].balance[m] = r.total;
+      });
+
+      monthlyData = grouped;
+      renderYear();
+      renderWeekChart();
+    }
+
+    function getTabColor(tab) {
+      if (tab === 'income')  return { line: 'rgba(22,163,74,1)',  fill: 'rgba(22,163,74,0.12)'  };
+      if (tab === 'expense') return { line: 'rgba(239,68,68,1)',  fill: 'rgba(239,68,68,0.12)'  };
+      return                        { line: 'rgba(99,102,241,1)', fill: 'rgba(99,102,241,0.12)' };
+    }
+
+    function renderYear() {
+      const data = monthlyData[currentYear] || { income: new Array(12).fill(0), expense: new Array(12).fill(0), balance: new Array(12).fill(null) };
+      document.getElementById('yearLabel').textContent = currentYear;
+
+      // Summary cards
+      const totalIncome  = data.income.reduce((a,v) => a+v, 0);
+      const totalExpense = data.expense.reduce((a,v) => a+v, 0);
+      const lastBal = [...data.balance].reverse().find(v => v !== null) ?? 0;
+      const net = totalIncome - totalExpense;
+
+      document.getElementById('summaryCards').innerHTML = `
+        <div class="stats-sum-card">
+          <div class="stats-sum-label">${t('stat_income')}</div>
+          <div class="stats-sum-value income">${fmt(totalIncome)}</div>
+        </div>
+        <div class="stats-sum-card">
+          <div class="stats-sum-label">${t('stat_expense')}</div>
+          <div class="stats-sum-value expense">${fmt(totalExpense)}</div>
+        </div>
+        <div class="stats-sum-card">
+          <div class="stats-sum-label">${t('stats_end_balance')}</div>
+          <div class="stats-sum-value balance">${fmt(lastBal)}</div>
+        </div>
+      `;
+
+      renderChart(data);
+      renderTable(data);
+    }
+
+    function renderChart(data) {
+      const vals = data[activeTab].map(v => v ?? 0);
+      const color = getTabColor(activeTab);
+      const isDark = document.documentElement.classList.contains('dark');
+      const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      const tickColor = isDark ? '#64748b' : '#94a3b8';
+
+      if (chartInstance) chartInstance.destroy();
+      const ctx = document.getElementById('statsChart');
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: getMonths(),
+          datasets: [{
+            data: vals,
+            borderColor: color.line,
+            backgroundColor: color.fill,
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: color.line,
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => ' ' + fmt(ctx.raw)
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: gridColor },
+              ticks: { color: tickColor, font: { size: 13 } },
+              border: { display: false }
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: {
+                color: tickColor,
+                font: { size: 12 },
+                callback: v => fmtK(v)
+              },
+              border: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('statsTableBody');
+      const now = new Date();
+      const monthsFull = getMonthsFull();
+      let rows = '';
+      for (let m = 0; m < 12; m++) {
+        const inc = data.income[m];
+        const exp = data.expense[m];
+        const bal = data.balance[m];
+        const diff = inc - exp;
+        const isFuture = currentYear > now.getFullYear() || (currentYear === now.getFullYear() && m > now.getMonth());
+        if (isFuture && inc === 0 && exp === 0 && bal === null) continue;
+
+        const diffHtml = diff === 0
+          ? '<span style="color:#94a3b8">—</span>'
+          : `<span style="color:${diff>0?'#16a34a':'#dc2626'};font-weight:600">${diff>0?'+':''}${fmt(diff)}</span>`;
+
+        rows += `<tr>
+          <td style="font-weight:600">${monthsFull[m]}</td>
+          <td style="text-align:right;color:#16a34a;font-weight:600">${inc ? fmt(inc) : '—'}</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">${exp ? fmt(exp) : '—'}</td>
+          <td style="text-align:right;color:#6366f1;font-weight:600">${bal !== null ? fmt(bal) : '—'}</td>
+          <td style="text-align:right">${diffHtml}</td>
+        </tr>`;
+      }
+      tbody.innerHTML = rows || '<tr class="empty-row"><td colspan="5"><i class="fa-solid fa-inbox"></i><p>' + t('no_data') + '</p></td></tr>';
+    }
+
+    // Tab switching
+    document.getElementById('tabGroup').addEventListener('click', e => {
+      const btn = e.target.closest('.stats-tab');
+      if (!btn || !btn.dataset.tab) return;
+      document.querySelectorAll('#tabGroup .stats-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      const data = monthlyData[currentYear] || { income: new Array(12).fill(0), expense: new Array(12).fill(0), balance: new Array(12).fill(null) };
+      renderChart(data);
+    });
+
+    // Year nav
+    document.getElementById('yearPrev').addEventListener('click', () => { currentYear--; renderYear(); });
+    document.getElementById('yearNext').addEventListener('click', () => { currentYear++; renderYear(); });
+
+    // ===== WEEKLY BAR CHART =====
+    let weekChartInstance = null;
+    let activeWeekTab = 'expense';
+    let rawInc = [], rawExp = [];
+
+    function getWeekStart(date) {
+      const d = new Date(date); d.setHours(0,0,0,0);
+      const day = d.getDay();
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      return d.getTime();
+    }
+
+    function getWeekLabel(ts) {
+      const d = new Date(ts), e = new Date(ts + 6*864e5);
+      const f = x => ('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2);
+      return f(d)+' - '+f(e);
+    }
+
+    function renderWeekChart() {
+      const now = new Date();
+      const thisWS = getWeekStart(now);
+      const weeks = Array.from({length:12}, (_,i) => thisWS - (11-i)*7*864e5);
+      const labels = weeks.map(getWeekLabel);
+      const records = activeWeekTab === 'expense' ? rawExp : rawInc.filter(r => r.checkedIn);
+      const map = {}; weeks.forEach(w => map[w] = 0);
+      records.forEach(r => { const ws = getWeekStart(new Date(r.date)); if (map[ws] !== undefined) map[ws] += r.total; });
+      const vals = weeks.map(w => map[w]);
+
+      const isDark = document.documentElement.classList.contains('dark');
+      const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      const tickColor = isDark ? '#64748b' : '#94a3b8';
+      const barColor  = activeWeekTab === 'expense' ? 'rgba(59,130,246,0.85)' : 'rgba(22,163,74,0.85)';
+      const barHover  = activeWeekTab === 'expense' ? 'rgba(37,99,235,1)'     : 'rgba(15,118,54,1)';
+
+      const fd = d => ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+      document.getElementById('weekChartSub').textContent = fd(new Date(weeks[0])) + ' — ' + fd(new Date(weeks[11]+6*864e5));
+
+      if (weekChartInstance) weekChartInstance.destroy();
+      weekChartInstance = new Chart(document.getElementById('weekChart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ data: vals, backgroundColor: barColor, hoverBackgroundColor: barHover, borderRadius: 6, borderSkipped: false }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: tickColor, font: { size: 11 }, maxRotation: 30 }, border: { display: false } },
+            y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 12 }, callback: v => fmtK(v) }, border: { display: false }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    document.getElementById('weekTabGroup').addEventListener('click', e => {
+      const btn = e.target.closest('.stats-tab');
+      if (!btn || !btn.dataset.wtab) return;
+      document.querySelectorAll('#weekTabGroup .stats-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeWeekTab = btn.dataset.wtab;
+      renderWeekChart();
+    });
+
+    loadData();
+    document.addEventListener('langChanged', () => { renderYear(); renderWeekChart(); });
+  </script>
+<%- include('partials/_foot') %>

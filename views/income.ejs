@@ -1,0 +1,330 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'income' }) %>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="income_page_title">Quản lý lương</h1>
+        </div>
+        <div class="topbar-actions">
+          <a href="/" class="btn-cancel" style="text-decoration:none;padding:9px 16px;border-radius:8px">
+            <i class="fa-solid fa-arrow-left"></i> <span data-i18n="bal_back">Quay lại</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+      <div class="balance-page">
+
+        <!-- Calendar -->
+        <div class="mini-calendar">
+          <div class="cal-header">
+            <button id="calPrev"><i class="fa-solid fa-chevron-left"></i></button>
+            <span id="calMonthLabel"></span>
+            <button id="calNext"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="cal-weekdays" id="calWeekdays">
+            <span>CN</span><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span>
+          </div>
+          <div class="cal-days" id="calDays"></div>
+          <div class="cal-selected">
+            <span data-i18n="checkin_date_label">Ngày checkIn:</span> <strong id="todayLabel"></strong>
+          </div>
+          <input type="hidden" id="incomeDate">
+        </div>
+
+        <!-- Salary input -->
+        <div class="income-input-section" id="salarySection">
+          <label id="salaryLabel" data-i18n="salary_label">Tiền Lương <span id="salaryDateTag" class="salary-date-tag"></span></label>
+
+          <!-- Salary amount (display only, không cộng vào số dư) -->
+          <div class="salary-tabs">
+            <div class="salary-tab-block">
+              <div class="salary-tab-title"><i class="fa-solid fa-money-bill-wave"></i> <span data-i18n="tab_salary">Tiền lương</span></div>
+              <div class="salary-input-row">
+                <input type="text" id="incomeBankDisplay" data-i18n-placeholder="salary_placeholder" placeholder="Nhập tiền lương..." autocomplete="off" value="0">
+                <input type="hidden" id="incomeBankInput" value="0">
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden total -->
+          <input type="hidden" id="incomeInput" value="0">
+          <input type="hidden" id="incomeDisplay" value="0">
+        </div>
+
+        <!-- Check In actions -->
+        <div class="balance-page-actions">
+          <button id="checkInBtn" class="btn-checkin">
+            <i class="fa-solid fa-briefcase"></i> <span data-i18n="btn_checkin">Check In</span>
+          </button>
+          <button id="cancelCheckInBtn" class="btn-uncheckin" style="display:none">
+            <i class="fa-solid fa-xmark"></i> <span data-i18n="btn_uncheckin">Hủy Check In</span>
+          </button>
+        </div>
+
+        <!-- History table -->
+        <div class="history-section">
+          <div class="section-header">
+            <h2 data-i18n="checkin_history">Lịch sử checkIn</h2>
+          </div>
+          <div class="table-wrapper">
+            <table id="incomeHistoryTable">
+              <thead>
+                <tr>
+                  <th data-i18n="col_date">Ngày</th>
+                  <th data-i18n="col_checkin">Check In</th>
+                  <th data-i18n="col_salary">Tiền Lương</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty-row">
+                  <td colspan="3"><i class="fa-solid fa-inbox"></i><p data-i18n="no_data">Chưa có dữ liệu</p></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <%- include('partials/_scripts') %>
+  <script>
+(function () {
+  var curYear, curMonth, selectedDate;
+  var checkedDates = {};
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function dateStr(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
+
+  function renderCalendar(year, month) {
+    var label = document.getElementById('calMonthLabel');
+    var container = document.getElementById('calDays');
+    if (!label || !container) return;
+    var lang = localStorage.getItem('lang') || 'vi';
+    var monthNames = (translations[lang] && translations[lang].month_names
+      ? translations[lang].month_names
+      : 'Thang 1,Thang 2,Thang 3,Thang 4,Thang 5,Thang 6,Thang 7,Thang 8,Thang 9,Thang 10,Thang 11,Thang 12'
+    ).split(',');
+    var weekdays = (translations[lang] && translations[lang].weekdays
+      ? translations[lang].weekdays : 'CN,T2,T3,T4,T5,T6,T7').split(',');
+    // Cap nhat weekday header
+    var wdEl = document.getElementById('calWeekdays');
+    if (wdEl) wdEl.innerHTML = weekdays.map(function(w){ return '<span>'+w+'</span>'; }).join('');
+    label.textContent = monthNames[month] + ' ' + year;
+    container.innerHTML = '';
+    var firstDay = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (var i = 0; i < firstDay; i++) {
+      var empty = document.createElement('div');
+      empty.className = 'cal-day empty';
+      container.appendChild(empty);
+    }
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (var d = 1; d <= daysInMonth; d++) {
+      var cell = document.createElement('div');
+      var ds = dateStr(year, month, d);
+      var parts = ds.split('-');
+      var cellDate = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+      var isPast   = cellDate < today;
+      var isFuture = cellDate > today;
+      cell.className = 'cal-day' + (isPast || isFuture ? ' cal-disabled' : '');
+      cell.setAttribute('data-date', ds);
+      var num = document.createElement('span');
+      num.textContent = d;
+      cell.appendChild(num);
+      if (checkedDates[ds]) {
+        var dot = document.createElement('span');
+        dot.className = 'cal-checkin-dot';
+        dot.textContent = '\u2713';
+        cell.appendChild(dot);
+      }
+      if (ds === selectedDate) cell.classList.add('selected');
+      if (cellDate.getTime() === today.getTime()) cell.classList.add('today');
+      if (!isPast && !isFuture) {
+        cell.onclick = (function (c, s) {
+          return function () {
+            var prev = container.querySelector('.cal-day.selected');
+            if (prev) prev.classList.remove('selected');
+            c.classList.add('selected');
+            selectedDate = s;
+            document.getElementById('incomeDate').value = s;
+            var p = s.split('-');
+            document.getElementById('todayLabel').textContent = p[2] + '/' + p[1] + '/' + p[0];
+            updateUI();
+          };
+        })(cell, ds);
+      }
+      container.appendChild(cell);
+    }
+  }
+
+  function updateUI() {
+    var isChecked = !!checkedDates[selectedDate];
+    var checkBtn = document.getElementById('checkInBtn');
+    var cancelBtn = document.getElementById('cancelCheckInBtn');
+    var tag = document.getElementById('salaryDateTag');
+    var p = selectedDate.split('-');
+    if (isChecked) {
+      checkBtn.style.display = 'none';
+      cancelBtn.style.display = 'inline-flex';
+      tag.textContent = '(' + p[2] + '/' + p[1] + '/' + p[0] + ')';
+    } else {
+      checkBtn.style.display = 'inline-flex';
+      cancelBtn.style.display = 'none';
+      tag.textContent = '';
+    }
+  }
+
+  function initCalendar() {
+    var now = new Date();
+    curYear = now.getFullYear();
+    curMonth = now.getMonth();
+    var d = now.getDate();
+    selectedDate = dateStr(curYear, curMonth, d);
+    document.getElementById('incomeDate').value = selectedDate;
+    document.getElementById('todayLabel').textContent = pad(d) + '/' + pad(curMonth + 1) + '/' + curYear;
+    renderCalendar(curYear, curMonth);
+    document.getElementById('calPrev').onclick = function () {
+      curMonth--; if (curMonth < 0) { curMonth = 11; curYear--; }
+      renderCalendar(curYear, curMonth);
+    };
+    document.getElementById('calNext').onclick = function () {
+      curMonth++; if (curMonth > 11) { curMonth = 0; curYear++; }
+      renderCalendar(curYear, curMonth);
+    };
+  }
+
+  function initIncomeInput() {
+    var display = document.getElementById('incomeBankDisplay');
+    var hidden  = document.getElementById('incomeBankInput');
+    display.addEventListener('input', function () {
+      var raw = display.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+      hidden.value = raw || '0';
+      display.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+      document.getElementById('incomeInput').value = raw || '0';
+    });
+  }
+
+  function loadHistory() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/income/history', true);
+    xhr.onload = function () {
+      if (xhr.status !== 200) return;
+      var data = JSON.parse(xhr.responseText);
+      checkedDates = {};
+      for (var i = 0; i < data.length; i++) {
+        if (data[i].checkedIn) {
+          var dt = new Date(data[i].date);
+          var ds = dateStr(dt.getFullYear(), dt.getMonth(), dt.getDate());
+          checkedDates[ds] = true;
+
+          // Nếu là hôm nay và đã check in → populate form
+          if (ds === selectedDate) {
+            var bankVal = data[i].bankAmount || 0;
+            document.getElementById('incomeBankInput').value = bankVal;
+            document.getElementById('incomeBankDisplay').value = bankVal > 0
+              ? bankVal.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+            document.getElementById('incomeInput').value = bankVal;
+          }
+        }
+      }
+      renderCalendar(curYear, curMonth);
+      updateUI();
+      var tbody = document.querySelector('#incomeHistoryTable tbody');
+      if (!data || data.length === 0) return;
+      tbody.innerHTML = '';
+      for (var j = 0; j < data.length; j++) {
+        var r = data[j];
+        var d2 = new Date(r.date);
+        var df = pad(d2.getDate()) + '/' + pad(d2.getMonth() + 1) + '/' + d2.getFullYear();
+        var tr = document.createElement('tr');
+        var td1 = document.createElement('td'); td1.textContent = df;
+        var td2 = document.createElement('td');
+        var lang2 = localStorage.getItem('lang') || 'vi';
+        var workingText = (translations[lang2] && translations[lang2].status_working) ? translations[lang2].status_working : 'Di lam';
+        td2.innerHTML = r.checkedIn
+          ? '<span class="badge-checkin"><i class="fa-solid fa-circle-check"></i> ' + workingText + '</span>'
+          : '<span class="badge-absent">-</span>';
+        var td3 = document.createElement('td');
+        td3.textContent = r.total > 0
+          ? r.total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' đ'
+          : '-';
+        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+        tbody.appendChild(tr);
+      }
+    };
+    xhr.send();
+  }
+
+  function postJSON(url, body, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () {
+      if (xhr.status === 200) { cb(); }
+      else { console.error(url, xhr.status, xhr.responseText); }
+    };
+    xhr.send(JSON.stringify(body));
+  }
+
+  function initButtons() {
+    document.getElementById('checkInBtn').onclick = function () {
+      var date    = document.getElementById('incomeDate').value;
+      var bankAmt = Number(document.getElementById('incomeBankInput').value) || 0;
+      postJSON('/income/checkin', { date: date }, function () {
+        checkedDates[date] = true;
+        renderCalendar(curYear, curMonth);
+        updateUI();
+        postJSON('/income', { income: bankAmt, bankAmount: bankAmt, cashAmount: 0, cashDenoms: {}, date: date }, function () { loadHistory(); });
+      });
+    };
+    document.getElementById('cancelCheckInBtn').onclick = function () {
+      var date = document.getElementById('incomeDate').value;
+      postJSON('/income/uncheckin', { date: date }, function () {
+        delete checkedDates[date];
+        document.getElementById('incomeBankDisplay').value = '';
+        document.getElementById('incomeBankInput').value = '0';
+        document.getElementById('incomeInput').value = '0';
+        renderCalendar(curYear, curMonth);
+        updateUI();
+        loadHistory();
+      });
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initCalendar();
+    initIncomeInput();
+    initButtons();
+    loadHistory();
+
+    // Tu dong chuyen ngay khi qua ngay moi
+    var lastDate = new Date().getDate();
+    setInterval(function () {
+      var now = new Date();
+      if (now.getDate() !== lastDate) {
+        lastDate = now.getDate();
+        curYear = now.getFullYear();
+        curMonth = now.getMonth();
+        selectedDate = dateStr(curYear, curMonth, now.getDate());
+        document.getElementById('incomeDate').value = selectedDate;
+        document.getElementById('todayLabel').textContent = pad(now.getDate()) + '/' + pad(curMonth + 1) + '/' + curYear;
+        loadHistory(); // render lai calendar + updateUI ben trong
+      }
+    }, 60000);
+
+    // Re-render calendar khi doi ngon ngu
+    document.addEventListener('langChanged', function () {
+      renderCalendar(curYear, curMonth);
+    });
+  });
+})();
+  </script>
+<%- include('partials/_foot') %>

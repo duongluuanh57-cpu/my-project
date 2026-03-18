@@ -1,0 +1,208 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'home' }) %>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="nav_overview">Tổng quan</h1>
+          <p data-i18n="welcome">Chào mừng trở lại 👋</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+      <section class="stats">
+        <a href="/balance" class="stat-card" style="text-decoration:none">
+          <div class="stat-card-top">
+            <div>
+              <div class="stat-label" data-i18n="stat_balance">Số dư hiện tại</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="balanceValue"><%= balance.toLocaleString('vi-VN') %> &#8363;</div>
+                <div class="stat-change" id="balanceChange"></div>
+              </div>
+            </div>
+            <div class="stat-icon stat-icon-blue"><i class="fa-solid fa-scale-balanced"></i></div>
+          </div>
+          <div class="stat-chart-wrap"><canvas id="balanceChart"></canvas></div>
+        </a>
+        <a href="/income" class="stat-card" style="text-decoration:none">
+          <div class="stat-card-top">
+            <div>
+              <div class="stat-label" data-i18n="stat_income">Tổng thu nhập</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="incomeValue"><%= income.toLocaleString('vi-VN') %> &#8363;</div>
+                <div class="stat-change" id="incomeChange"></div>
+              </div>
+            </div>
+            <div class="stat-icon stat-icon-green"><i class="fa-solid fa-arrow-trend-up"></i></div>
+          </div>
+          <div class="stat-chart-wrap"><canvas id="incomeChart"></canvas></div>
+        </a>
+        <a href="/expense" class="stat-card" style="text-decoration:none">
+          <div class="stat-card-top">
+            <div>
+              <div class="stat-label" data-i18n="stat_expense">Tổng chi tiêu</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="expenseValue"><%= expense.toLocaleString('vi-VN') %> &#8363;</div>
+                <div class="stat-change" id="expenseChange"></div>
+              </div>
+            </div>
+            <div class="stat-icon stat-icon-red"><i class="fa-solid fa-arrow-trend-down"></i></div>
+          </div>
+          <div class="stat-chart-wrap"><canvas id="expenseChart"></canvas></div>
+        </a>
+      </section>
+      <section class="transactions">
+        <div class="section-header">
+          <h2 data-i18n="recent_transactions">Giao dịch gần đây</h2>
+          <a href="#" class="link-all" data-i18n="view_all">Xem tất cả</a>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="col_desc">Mô tả</th>
+                <th data-i18n="col_type">Loại</th>
+                <th data-i18n="col_amount">Số tiền</th>
+                <th data-i18n="col_date">Ngày</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="empty-row">
+                <td colspan="4"><i class="fa-solid fa-inbox"></i><p data-i18n="no_transactions">Chưa có giao dịch nào</p></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+  <%- include('partials/_scripts') %>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+  // So sánh tổng tháng này vs tháng trước (dùng cho income/expense)
+  function calcChangeSumMonth(data) {
+    if (!data || data.length === 0) return 'new';
+    var now = new Date();
+    var tm = now.getMonth(), ty = now.getFullYear();
+    var lm = tm === 0 ? 11 : tm - 1, ly = tm === 0 ? ty - 1 : ty;
+    var cur = 0, prev = 0;
+    data.forEach(function(r) {
+      var d = new Date(r.date);
+      if (d.getMonth() === tm && d.getFullYear() === ty) cur += r.total;
+      if (d.getMonth() === lm && d.getFullYear() === ly) prev += r.total;
+    });
+    if (cur === 0 && prev === 0) return null;
+    if (prev === 0) return 'new';
+    return ((cur - prev) / prev * 100).toFixed(1);
+  }
+  // So sánh giá trị mới nhất vs giá trị tháng trước (dùng cho balance)
+  function calcChangeLatest(data) {
+    if (!data || data.length === 0) return null;
+    var sorted = data.slice().sort(function(a,b){ return new Date(a.date)-new Date(b.date); });
+    var now = new Date();
+    var lm = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    var ly = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    var prev = null;
+    sorted.forEach(function(r) {
+      var d = new Date(r.date);
+      if (d.getMonth() === lm && d.getFullYear() === ly) prev = r.total;
+    });
+    var cur = sorted[sorted.length - 1].total;
+    if (prev === null || prev === 0) return sorted.length > 0 ? 'new' : null;
+    return ((cur - prev) / prev * 100).toFixed(1);
+  }
+  function renderChange(id, pct) {
+    var el = document.getElementById(id);
+    if (!el || pct === null) return;
+    if (pct === 'new') {
+      var lang = localStorage.getItem('lang') || 'vi';
+      var label = (translations[lang] && translations[lang].stat_first_month) ? translations[lang].stat_first_month : 'Tháng đầu';
+      el.innerHTML = '<span class="stat-pct new">' + label + '</span>';
+      return;
+    }
+    var up = Number(pct) >= 0;
+    el.innerHTML = '<span class="stat-pct '+(up?'up':'down')+'">'+(up?'▲':'▼')+' '+(up?'+':'')+pct+'%</span>';
+  }
+  function makeChart(id, vals, color) {
+    var ctx = document.getElementById(id);
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'line',
+      data: { labels: vals.map(function(_,i){return i;}), datasets: [{ data: vals, borderColor: color, backgroundColor: color.replace('1)','0.15)'), borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, responsive: true, maintainAspectRatio: false }
+    });
+  }
+  function prep(data) {
+    var s = data.slice().sort(function(a,b){ return new Date(a.date)-new Date(b.date); }).slice(-30);
+    var v = s.map(function(r){ return r.total; });
+    if (v.length === 0) v = [0,0];
+    if (v.length === 1) v = [0].concat(v);
+    return { s: s, v: v };
+  }
+  var _cachedBalChange = null, _cachedIncChange = null, _cachedExpChange = null;
+  fetch('/balance/history').then(function(r){return r.json();}).then(function(d){
+    var p=prep(d); makeChart('balanceChart',p.v,'rgba(99,102,241,1)');
+    _cachedBalChange = calcChangeLatest(p.s); renderChange('balanceChange', _cachedBalChange);
+  });
+  fetch('/income/history').then(function(r){return r.json();}).then(function(d){
+    var checked = d.filter(function(r){ return r.checkedIn; });
+    var p=prep(checked); makeChart('incomeChart',p.v,'rgba(22,163,74,1)');
+    _cachedIncChange = calcChangeSumMonth(checked); renderChange('incomeChange', _cachedIncChange);
+    if(p.s.length){ var t=p.s.reduce(function(a,r){return a+r.total;},0); document.getElementById('incomeValue').textContent=t.toLocaleString('vi-VN')+' \u20ab'; }
+  });
+  fetch('/expense/history').then(function(r){return r.json();}).then(function(d){
+    var p=prep(d); makeChart('expenseChart',p.v,'rgba(239,68,68,1)');
+    _cachedExpChange = calcChangeSumMonth(p.s); renderChange('expenseChange', _cachedExpChange);
+    if(p.s.length){ var t=p.s.reduce(function(a,r){return a+r.total;},0); document.getElementById('expenseValue').textContent=t.toLocaleString('vi-VN')+' \u20ab'; }
+  });
+  document.addEventListener('langChanged', function() {
+    renderChange('balanceChange', _cachedBalChange);
+    renderChange('incomeChange',  _cachedIncChange);
+    renderChange('expenseChange', _cachedExpChange);
+    renderRecentTx();
+  });
+  var _cachedTxRows = [];
+  function renderRecentTx() {
+    if (!_cachedTxRows.length) return;
+    var tbody=document.querySelector('.transactions tbody');
+    tbody.innerHTML='';
+    _cachedTxRows.forEach(function(r){
+      var d=r.date, df=('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+      var lang=localStorage.getItem('lang')||'vi';
+      var tr2=translations[lang]||translations['vi'];
+      var desc,badge,amount;
+      if(r.type==='balance'){
+        desc=tr2.tx_balance_update||'Cập nhật số dư'; badge='<span class="badge-type balance">'+tr2.badge_balance+'</span>';
+        amount='<span style="color:#6366f1;font-weight:600">'+Number(r.total).toLocaleString('vi-VN')+' ₫</span>';
+      } else if(r.type==='income'){
+        desc=tr2.tx_salary||'Tiền lương'; badge='<span class="badge-type income">'+tr2.badge_income+'</span>';
+        amount='<span style="color:#16a34a;font-weight:600">+'+Number(r.total).toLocaleString('vi-VN')+' ₫</span>';
+      } else {
+        desc=r.note||tr2.tx_expense||'Chi tiêu'; badge='<span class="badge-type expense">'+tr2.badge_expense+'</span>';
+        amount='<span style="color:#dc2626;font-weight:600">-'+Number(r.total).toLocaleString('vi-VN')+' ₫</span>';
+      }
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+desc+'</td><td>'+badge+'</td><td>'+amount+'</td><td>'+df+'</td>';
+      tbody.appendChild(tr);
+    });
+  }
+  Promise.all([
+    fetch('/balance/history').then(function(r){return r.json();}),
+    fetch('/income/history').then(function(r){return r.json();}),
+    fetch('/expense/history').then(function(r){return r.json();})
+  ]).then(function(res){
+    var rows=[];
+    res[0].forEach(function(r){ rows.push({date:new Date(r.date),type:'balance',total:r.total}); });
+    res[1].forEach(function(r){ if(r.checkedIn) rows.push({date:new Date(r.date),type:'income',total:r.total}); });
+    res[2].forEach(function(r){ rows.push({date:new Date(r.date),type:'expense',total:r.total,note:r.note}); });
+    rows.sort(function(a,b){return b.date-a.date;});
+    _cachedTxRows = rows.slice(0, 5);
+    renderRecentTx();
+  });
+  </script>
+<%- include('partials/_foot') %>

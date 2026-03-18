@@ -1,0 +1,212 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'manage' }) %>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="nav_transactions">Quản lí</h1>
+          <p data-i18n="manage_subtitle">Toàn bộ lịch sử thu chi</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/sources" class="btn-primary" style="text-decoration:none">
+            <i class="fa-solid fa-wallet"></i> <span data-i18n="manage_sources_btn">Thêm / Chỉnh sửa nguồn tiền</span>
+          </a>
+          <a href="/categories" class="btn-primary" style="text-decoration:none;background:#0f766e">
+            <i class="fa-solid fa-tags"></i> <span data-i18n="manage_cats_btn">Thêm / Chỉnh sửa danh mục</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <!-- Filter bar -->
+      <div class="manage-filters">
+        <div class="filter-group">
+          <button class="filter-btn active" data-filter="all" data-i18n="filter_all">Tất cả</button>
+          <button class="filter-btn" data-filter="expense" data-i18n="filter_expense">Chi tiêu</button>
+          <button class="filter-btn" data-filter="balance" data-i18n="filter_balance">Số dư</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="typeFilter" class="expense-field" style="margin-top:0;width:160px;height:38px;font-size:13px">
+            <option value="" data-i18n="filter_all">Tất cả</option>
+            <option value="income" data-i18n="filter_received">Tiền đã nhận</option>
+            <option value="expense" data-i18n="filter_spent">Tiền đã sài</option>
+          </select>
+          <select id="categoryFilter" class="expense-field" style="margin-top:0;width:160px;height:38px;font-size:13px;display:none">
+            <option value="" data-i18n="filter_category">Danh mục</option>
+          </select>
+          <button id="clearFilter" onclick="resetFilters()" style="display:none;height:38px;padding:0 14px;border-radius:8px;border:1px solid #334155;background:transparent;color:#dc2626;font-size:13px;font-weight:600;cursor:pointer;align-items:center;gap:6px">
+            <i class="fa-solid fa-xmark"></i> <span data-i18n="filter_clear">Xóa lọc</span>
+          </button>
+          <div class="filter-search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="searchInput" data-i18n-placeholder="search_placeholder" placeholder="Tìm kiếm ghi chú...">
+          </div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="transactions">
+        <div class="section-header">
+          <h2 id="recordCount">Đang tải...</h2>
+        </div>
+        <div class="table-wrapper">
+          <table id="manageTable">
+            <thead>
+              <tr>
+                <th data-i18n="col_date">Ngày</th>
+                <th data-i18n="col_type">Loại</th>
+                <th data-i18n="col_note_cat">Ghi chú / Danh mục</th>
+                <th style="text-align:right" data-i18n="col_amount">Số tiền</th>
+              </tr>
+            </thead>
+            <tbody id="manageBody">
+              <tr class="empty-row">
+                <td colspan="4"><i class="fa-solid fa-spinner fa-spin"></i><p>Đang tải dữ liệu...</p></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <%- include('partials/_scripts') %>
+  <script>
+    let allRecords = [];
+    let currentFilter = 'all';
+    let currentCategory = '';
+    let currentTypeFilter = '';
+
+    function fmt(n) { return Number(n).toLocaleString('vi-VN') + ' ₫'; }
+    function fmtDate(d) { return new Date(d).toLocaleDateString('vi-VN'); }
+
+    function t(key) {
+      const lang = localStorage.getItem('lang') || 'vi';
+      return (translations[lang] && translations[lang][key]) ? translations[lang][key] : key;
+    }
+
+    function render(records) {
+      const tbody = document.getElementById('manageBody');
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      let filtered = records.filter(r => currentFilter === 'all' || r.type === currentFilter);
+      if (currentFilter === 'all' && currentTypeFilter) {
+        filtered = filtered.filter(r => r.type === currentTypeFilter);
+      }
+      if (currentCategory) filtered = filtered.filter(r => {
+        if (r.type !== 'expense') return false;
+        const cat = (r.note || '').split(' - ')[0].trim();
+        return cat === currentCategory;
+      });
+      if (search) filtered = filtered.filter(r => (r.note || '').toLowerCase().includes(search));
+
+      document.getElementById('recordCount').textContent = filtered.length + ' ' + t('transactions_count');
+
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="4"><i class="fa-solid fa-inbox"></i><p>${t('no_data_filter')}</p></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(r => {
+        let badge, amount, note;
+        if (r.type === 'income') {
+          badge = `<span class="badge-type income"><i class="fa-solid fa-arrow-up"></i> ${t('badge_income')}</span>`;
+          amount = '<span style="color:#16a34a;font-weight:700">+' + fmt(r.total) + '</span>';
+          note = '—';
+        } else if (r.type === 'expense') {
+          badge = `<span class="badge-type expense"><i class="fa-solid fa-arrow-down"></i> ${t('badge_expense')}</span>`;
+          amount = '<span style="color:#dc2626;font-weight:700">-' + fmt(r.total) + '</span>';
+          note = r.category ? (r.category + (r.note ? ' · ' + r.note : '')) : (r.note || '—');
+        } else {
+          badge = `<span class="badge-type balance"><i class="fa-solid fa-wallet"></i> ${t('badge_balance')}</span>`;
+          amount = '<span style="color:#6366f1;font-weight:700">' + fmt(r.total) + '</span>';
+          note = '—';
+        }
+        return `<tr>
+          <td>${fmtDate(r.date)}</td>
+          <td>${badge}</td>
+          <td style="color:#64748b;font-size:13px">${note}</td>
+          <td style="text-align:right">${amount}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function updateClearBtn() {
+      const active = currentTypeFilter || currentCategory || document.getElementById('searchInput').value;
+      const btn = document.getElementById('clearFilter');
+      btn.style.display = active ? 'inline-flex' : 'none';
+    }
+
+    function resetFilters() {
+      currentTypeFilter = '';
+      currentCategory = '';
+      document.getElementById('typeFilter').value = '';
+      document.getElementById('categoryFilter').value = '';
+      document.getElementById('searchInput').value = '';
+      document.getElementById('clearFilter').style.display = 'none';
+      render(allRecords);
+    }
+    async function buildCategoryFilter() {
+      const res = await fetch('/categories/list');
+      const cats = await res.json();
+      const sel = document.getElementById('categoryFilter');
+      sel.innerHTML = `<option value="">${t('filter_all_cats')}</option>` +
+        cats.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    }
+
+    async function loadAll() {
+      const [balRes, incRes, expRes] = await Promise.all([
+        fetch('/balance/history'),
+        fetch('/income/history'),
+        fetch('/expense/history')
+      ]);
+      const [bal, inc, exp] = await Promise.all([balRes.json(), incRes.json(), expRes.json()]);
+
+      const records = [
+        ...bal.map(r => ({ ...r, type: 'balance' })),
+        ...inc.filter(r => r.checkedIn).map(r => ({ ...r, type: 'income' })),
+        ...exp.map(r => ({ ...r, type: 'expense' }))
+      ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      allRecords = records;
+      await buildCategoryFilter();
+      render(allRecords);
+    }
+
+    document.addEventListener('langChanged', () => render(allRecords));
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        document.getElementById('typeFilter').style.display = currentFilter === 'all' ? '' : 'none';
+        if (currentFilter !== 'all') { currentTypeFilter = ''; document.getElementById('typeFilter').value = ''; }
+        document.getElementById('categoryFilter').style.display = currentFilter === 'expense' ? '' : 'none';
+        if (currentFilter !== 'expense') { currentCategory = ''; document.getElementById('categoryFilter').value = ''; }
+        updateClearBtn();
+        render(allRecords);
+      });
+    });
+
+    document.getElementById('typeFilter').addEventListener('change', function() {
+      currentTypeFilter = this.value;
+      updateClearBtn();
+      render(allRecords);
+    });
+
+    document.getElementById('categoryFilter').addEventListener('change', function() {
+      currentCategory = this.value;
+      updateClearBtn();
+      render(allRecords);
+    });
+
+    document.getElementById('searchInput').addEventListener('input', () => { updateClearBtn(); render(allRecords); });
+
+    loadAll();
+  </script>
+<%- include('partials/_foot') %>

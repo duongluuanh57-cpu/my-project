@@ -1,0 +1,311 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'expense' }) %>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="expense_page_title">Chi tiêu</h1>
+        </div>
+        <div class="topbar-actions">
+          <a href="/" class="btn-cancel" style="text-decoration:none;padding:9px 16px;border-radius:8px">
+            <i class="fa-solid fa-arrow-left"></i> <span data-i18n="bal_back">Quay lại</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+      <div class="balance-page">
+
+        <!-- Calendar -->
+        <div class="mini-calendar week">
+          <div class="cal-header">
+            <button id="calPrev"><i class="fa-solid fa-chevron-left"></i></button>
+            <span id="calMonthLabel"></span>
+            <button id="calNext"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="cal-weekdays" id="calWeekdays">
+            <span>CN</span><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span>
+          </div>
+          <div class="cal-days" id="calDays"></div>
+          <div class="cal-selected">
+            <span data-i18n="expense_date_label">Ngày chi tiêu:</span> <strong id="todayLabel"></strong>
+          </div>
+          <input type="hidden" id="expenseDate">
+        </div>
+
+        <!-- Input -->
+        <div class="income-input-section">
+          <label data-i18n="expense_amount">Số tiền <span id="expenseDateTag" class="salary-date-tag"></span></label>
+          <input type="text" id="expenseDisplay" class="expense-field" data-i18n-placeholder="expense_amount" placeholder="Nhập số tiền..." autocomplete="off">
+          <input type="hidden" id="expenseInput" value="0">
+          <div class="expense-row-selects">
+            <select id="expenseCategory" class="expense-field">
+              <option value="">-- Danh mục --</option>
+            </select>
+            <select id="expenseSource" class="expense-field">
+              <option value="">Đang tải...</option>
+            </select>
+          </div>
+          <input type="text" id="expenseNote" class="expense-field" data-i18n-placeholder="expense_note_ph" placeholder="Ghi chú (tùy chọn)...">
+        </div>
+
+        <!-- Actions -->
+        <div class="balance-page-actions">
+          <button id="expenseSave" class="btn-primary">
+            <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="btn_save_expense">Lưu chi tiêu</span>
+          </button>
+        </div>
+
+        <!-- History -->
+        <div class="history-section">
+          <div class="section-header">
+            <h2 data-i18n="expense_history">Lịch sử chi tiêu</h2>
+          </div>
+          <div class="table-wrapper">
+            <table id="expenseHistoryTable">
+              <thead>
+                <tr>
+                  <th data-i18n="col_date">Ngày</th>
+                  <th data-i18n="col_note">Ghi chú</th>
+                  <th>Nguồn tiền</th>
+                  <th data-i18n="col_amount">Số tiền</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty-row">
+                  <td colspan="3"><i class="fa-solid fa-inbox"></i><p data-i18n="no_data">Chưa có dữ liệu</p></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    var EXPENSE_SOURCES = [];
+    fetch('/sources/list').then(function(r){ return r.json(); }).then(function(data){
+      EXPENSE_SOURCES = data.filter(function(s){ return !s.disabled; });
+      var sel = document.getElementById('expenseSource');
+      sel.innerHTML = EXPENSE_SOURCES.map(function(s){
+        return '<option value="' + s._id + '">' + s.name + '</option>';
+      }).join('');
+    });
+    fetch('/categories/list').then(function(r){ return r.json(); }).then(function(data){
+      var sel = document.getElementById('expenseCategory');
+      sel.innerHTML = '<option value="">-- Danh mục --</option>' +
+        data.map(function(c){ return '<option value="' + c.name + '">' + c.name + '</option>'; }).join('');
+    });
+  </script>
+  <%- include('partials/_scripts') %>
+  <script>
+(function () {
+  var weekOffset = 0; // 0 = tuan hien tai, -1 = tuan truoc, ...
+  var selectedDate;
+  var expenseDates = {};
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function dateStr(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+
+  // Lay ngay dau tuan (CN) tu offset
+  function getWeekStart(offset) {
+    var now = new Date();
+    now.setHours(0, 0, 0, 0);
+    var day = now.getDay(); // 0=CN
+    var start = new Date(now);
+    start.setDate(now.getDate() - day + offset * 7);
+    return start;
+  }
+
+  function renderCalendar() {
+    var lang = localStorage.getItem('lang') || 'vi';
+    var weekdays = (translations[lang] && translations[lang].weekdays
+      ? translations[lang].weekdays : 'CN,T2,T3,T4,T5,T6,T7').split(',');
+
+    var wdEl = document.getElementById('calWeekdays');
+    if (wdEl) wdEl.innerHTML = weekdays.map(function(w){ return '<span>'+w+'</span>'; }).join('');
+
+    var weekStart = getWeekStart(weekOffset);
+    var weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+
+    // Header label
+    var label = document.getElementById('calMonthLabel');
+    var isVI = lang === 'vi';
+    var s = weekStart, e = weekEnd;
+    label.textContent = (isVI ? 'Tuần ' : 'Week ') +
+      pad(s.getDate()) + '/' + pad(s.getMonth()+1) + ' - ' +
+      pad(e.getDate()) + '/' + pad(e.getMonth()+1) + '/' + e.getFullYear();
+
+    var container = document.getElementById('calDays');
+    container.innerHTML = '';
+
+    var today = new Date(); today.setHours(0,0,0,0);
+
+    for (var i = 0; i < 7; i++) {
+      var day = new Date(weekStart); day.setDate(weekStart.getDate() + i);
+      var ds = dateStr(day);
+      var cell = document.createElement('div');
+      cell.className = 'cal-day';
+      cell.setAttribute('data-date', ds);
+
+      var num = document.createElement('span');
+      num.textContent = day.getDate();
+      cell.appendChild(num);
+
+
+      if (ds === selectedDate) cell.classList.add('selected');
+      if (day.getTime() === today.getTime()) cell.classList.add('today');
+
+      if (day.getTime() !== today.getTime()) {
+        cell.classList.add('cal-disabled');
+      } else {
+        cell.onclick = (function(c, s) {
+          return function() {
+            var prev = container.querySelector('.cal-day.selected');
+            if (prev) prev.classList.remove('selected');
+            c.classList.add('selected');
+            selectedDate = s;
+            document.getElementById('expenseDate').value = s;
+            var p = s.split('-');
+            document.getElementById('todayLabel').textContent = p[2] + '/' + p[1] + '/' + p[0];
+            document.getElementById('expenseDateTag').textContent = '(' + p[2] + '/' + p[1] + '/' + p[0] + ')';
+          };
+        })(cell, ds);
+      }
+
+      container.appendChild(cell);
+    }
+  }
+
+  function initCalendar() {
+    var now = new Date();
+    selectedDate = dateStr(now);
+    document.getElementById('expenseDate').value = selectedDate;
+    document.getElementById('todayLabel').textContent = pad(now.getDate()) + '/' + pad(now.getMonth()+1) + '/' + now.getFullYear();
+    document.getElementById('expenseDateTag').textContent = '(' + pad(now.getDate()) + '/' + pad(now.getMonth()+1) + '/' + now.getFullYear() + ')';
+    renderCalendar();
+    document.getElementById('calPrev').style.visibility = 'visible';
+    document.getElementById('calNext').style.visibility = 'visible';
+
+    document.getElementById('calPrev').onclick = function() {
+      weekOffset--;
+      renderCalendar();
+      updateNavBtns();
+    };
+    document.getElementById('calNext').onclick = function() {
+      weekOffset++;
+      renderCalendar();
+      updateNavBtns();
+    };
+
+    function updateNavBtns() {
+      // Không cho đi quá tuần hiện tại
+      document.getElementById('calNext').style.visibility = weekOffset >= 0 ? 'hidden' : 'visible';
+    }
+    updateNavBtns();
+  }
+
+  function initInput() {
+    var display = document.getElementById('expenseDisplay');
+    var hidden = document.getElementById('expenseInput');
+    display.addEventListener('input', function () {
+      var raw = display.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+      hidden.value = raw || '0';
+      if (raw) display.value = raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    });
+  }
+
+  function loadHistory() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/expense/history', true);
+    xhr.onload = function () {
+      if (xhr.status !== 200) return;
+      var data = JSON.parse(xhr.responseText);
+      expenseDates = {};
+      for (var i = 0; i < data.length; i++) {
+        // Dùng local date để tránh lệch UTC
+        var d0 = new Date(data[i].date);
+        var ds2 = d0.getFullYear() + '-' + pad(d0.getMonth()+1) + '-' + pad(d0.getDate());
+        expenseDates[ds2] = true;
+      }
+      renderCalendar();
+      var tbody = document.querySelector('#expenseHistoryTable tbody');
+      if (!data || data.length === 0) return;
+      tbody.innerHTML = '';
+      for (var j = 0; j < data.length; j++) {
+        var r = data[j];
+        var d1 = new Date(r.date);
+        var df = pad(d1.getDate()) + '/' + pad(d1.getMonth()+1) + '/' + d1.getFullYear();
+        var tr = document.createElement('tr');
+        var td1 = document.createElement('td'); td1.textContent = df;
+        var td2 = document.createElement('td'); td2.textContent = r.note || '-';
+        var td3 = document.createElement('td');
+        var sourceMap = {};
+        if (typeof EXPENSE_SOURCES !== 'undefined') EXPENSE_SOURCES.forEach(function(s){ sourceMap[s._id || s.id] = s.name; });
+        var sourceLabel = sourceMap[r.source] || (r.source === 'bank' ? 'Ngân hàng' : (r.source === 'cash' ? 'Tiền mặt' : '-'));
+        td3.textContent = sourceLabel;
+        var td4 = document.createElement('td');
+        td4.innerHTML = '<span style="color:#dc2626;font-weight:600">-' + r.total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' \u20ab</span>';
+        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
+        tbody.appendChild(tr);
+      }
+    };
+    xhr.send();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initCalendar();
+    initInput();
+    loadHistory();
+
+    document.getElementById('expenseSave').onclick = function () {
+      var amount = document.getElementById('expenseInput').value;
+      var date = document.getElementById('expenseDate').value;
+      var category = document.getElementById('expenseCategory').value;
+      var source = document.getElementById('expenseSource').value;
+      var noteText = document.getElementById('expenseNote').value;
+      var note = category ? (category + (noteText ? ' - ' + noteText : '')) : noteText;
+      if (!amount || Number(amount) <= 0) return;
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/expense', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onload = function () {
+        if (xhr.status === 200) {
+          document.getElementById('expenseDisplay').value = '';
+          document.getElementById('expenseInput').value = '0';
+          document.getElementById('expenseCategory').value = '';
+          document.getElementById('expenseNote').value = '';
+          loadHistory();
+        } else {
+          console.error('addExpense error', xhr.status, xhr.responseText);
+        }
+      };
+      xhr.send(JSON.stringify({ amount: amount, date: date, note: note, source: source }));
+    };
+
+    var lastDate = new Date().getDate();
+    setInterval(function () {
+      var now = new Date();
+      if (now.getDate() !== lastDate) {
+        lastDate = now.getDate();
+        selectedDate = dateStr(now);
+        document.getElementById('expenseDate').value = selectedDate;
+        var dl = pad(now.getDate()) + '/' + pad(now.getMonth()+1) + '/' + now.getFullYear();
+        document.getElementById('todayLabel').textContent = dl;
+        document.getElementById('expenseDateTag').textContent = '(' + dl + ')';
+        loadHistory();
+      }
+    }, 60000);
+
+    document.addEventListener('langChanged', function () {
+      renderCalendar();
+    });
+  });
+})();
+  </script>
+<%- include('partials/_foot') %>

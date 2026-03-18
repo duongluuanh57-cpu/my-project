@@ -1,0 +1,173 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'manage' }) %>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="sources_title">Nguồn tiền</h1>
+          <p data-i18n="sources_subtitle">Quản lý các nguồn tiền của bạn</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/manage" class="btn-cancel" style="text-decoration:none;padding:9px 16px;border-radius:8px">
+            <i class="fa-solid fa-arrow-left"></i> <span data-i18n="btn_back">Quay lại</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <div class="sources-page">
+        <!-- Add form -->
+        <div class="sources-form-card">
+          <h3 id="formTitle" data-i18n="src_form_add">Thêm nguồn tiền mới</h3>
+          <div class="sources-form">
+            <input type="hidden" id="editId">
+            <div class="sources-form-row">
+              <input type="text" id="sourceName" class="expense-field" data-i18n-placeholder="src_name_ph" placeholder="Tên nguồn tiền (vd: MB Bank, Momo...)">
+              <select id="sourceType" class="expense-field">
+                <option value="number" data-i18n="src_type_account">Tài khoản</option>
+                <option value="cash" data-i18n="src_type_cash">Tiền mặt</option>
+              </select>
+              <select id="sourceCurrency" class="expense-field" style="display:none">
+                <option value="VND">VND - Việt Nam Đồng</option>
+                <option value="USD">USD - US Dollar</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="GBP">GBP - British Pound</option>
+                <option value="JPY">JPY - Japanese Yen</option>
+                <option value="KRW">KRW - Korean Won</option>
+                <option value="CNY">CNY - Chinese Yuan</option>
+                <option value="THB">THB - Thai Baht</option>
+                <option value="SGD">SGD - Singapore Dollar</option>
+                <option value="AUD">AUD - Australian Dollar</option>
+                <option value="CAD">CAD - Canadian Dollar</option>
+                <option value="CHF">CHF - Swiss Franc</option>
+                <option value="HKD">HKD - Hong Kong Dollar</option>
+                <option value="MYR">MYR - Malaysian Ringgit</option>
+                <option value="PHP">PHP - Philippine Peso</option>
+                <option value="IDR">IDR - Indonesian Rupiah</option>
+                <option value="INR">INR - Indian Rupee</option>
+              </select>
+              <label class="source-disabled-check" id="disabledRow" style="display:none">
+                <input type="checkbox" id="sourceDisabled">
+                <span data-i18n="src_disabled">Vô hiệu hóa</span>
+              </label>
+              <button id="sourceSubmit" class="btn-primary">
+                <i class="fa-solid fa-plus"></i> <span data-i18n="btn_add">Thêm</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- List -->
+        <div class="transactions">
+          <div class="section-header">
+            <h2 id="sourceCount">Đang tải...</h2>
+          </div>
+          <div id="sourceList" class="source-list"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <%- include('partials/_scripts') %>
+  <script>
+    const iconMap = {
+      'fa-wallet': '💰',
+      'fa-building-columns': '🏦',
+      'fa-money-bill-wave': '💵',
+      'fa-bag-shopping': '🛍',
+      'fa-credit-card': '💳'
+    };
+
+    function t(key) {
+      const lang = localStorage.getItem('lang') || 'vi';
+      return (translations[lang] && translations[lang][key]) || translations['vi'][key] || key;
+    }
+
+    async function loadSources() {
+      const res = await fetch('/sources/list');
+      const data = await res.json();
+      document.getElementById('sourceCount').textContent = data.length + ' ' + t('sources_count');
+      const list = document.getElementById('sourceList');
+      if (!data.length) {
+        list.innerHTML = '<div class="empty-sources"><i class="fa-solid fa-inbox"></i><p>' + t('src_empty') + '</p></div>';
+        return;
+      }
+      list.innerHTML = data.map(s => `
+        <div class="source-item${s.disabled ? ' source-disabled' : ''}">
+          <div class="source-item-left">
+            <span class="source-name">${s.name}</span>
+            <span class="source-type-badge ${s.type === 'cash' ? 'cash' : 'number'}">
+              ${s.type === 'cash' ? t('src_badge_cash') : t('src_badge_account')}
+            </span>
+            ${s.type !== 'cash' && s.currency && s.currency !== 'VND' ? `<span class="source-type-badge number">${s.currency}</span>` : ''}
+            ${s.disabled ? '<span class="source-type-badge" style="background:#475569;color:#cbd5e1">' + t('src_badge_disabled') + '</span>' : ''}
+          </div>
+          <div class="source-item-actions">
+            <button class="btn-edit" onclick="editSource('${s._id}','${s.name}','${s.type || 'number'}',${!!s.disabled},'${s.currency || 'VND'}')">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="btn-delete" onclick="deleteSource('${s._id}')">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('sourceType').addEventListener('change', function() {
+      const isNumber = this.value === 'number';
+      document.getElementById('sourceCurrency').style.display = isNumber && document.getElementById('editId').value ? '' : 'none';
+    });
+
+    document.getElementById('sourceSubmit').onclick = async function() {
+      const id       = document.getElementById('editId').value;
+      const name     = document.getElementById('sourceName').value.trim();
+      const type     = document.getElementById('sourceType').value;
+      const currency = document.getElementById('sourceCurrency').value;
+      if (!name) return;
+
+      const url      = id ? '/sources/update' : '/sources/add';
+      const disabled = id ? document.getElementById('sourceDisabled').checked : false;
+      const body     = id ? { id, name, type, disabled, currency } : { name, type };
+      await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+      document.getElementById('editId').value = '';
+      document.getElementById('sourceName').value = '';
+      document.getElementById('sourceType').value = 'number';
+      document.getElementById('sourceDisabled').checked = false;
+      document.getElementById('sourceCurrency').style.display = 'none';
+      document.getElementById('disabledRow').style.display = 'none';
+      document.getElementById('formTitle').textContent = t('src_form_add');
+      document.getElementById('sourceSubmit').innerHTML = '<i class="fa-solid fa-plus"></i> ' + t('btn_add');
+      loadSources();
+    };
+
+    function editSource(id, name, type, disabled, currency) {
+      document.getElementById('editId').value = id;
+      document.getElementById('sourceName').value = name;
+      document.getElementById('sourceType').value = type || 'number';
+      document.getElementById('sourceDisabled').checked = !!disabled;
+      document.getElementById('disabledRow').style.display = 'flex';
+      const currSel = document.getElementById('sourceCurrency');
+      currSel.style.display = (type !== 'cash') ? '' : 'none';
+      currSel.value = currency || 'VND';
+      document.getElementById('formTitle').textContent = t('src_form_edit');
+      document.getElementById('sourceSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> ' + t('btn_save');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteSource(id) {
+      if (!confirm(t('src_confirm_delete'))) return;
+      await fetch('/sources/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      loadSources();
+    }
+
+    loadSources();
+    document.addEventListener('langChanged', loadSources);
+  </script>
+<%- include('partials/_foot') %>

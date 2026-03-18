@@ -1,0 +1,106 @@
+<%- include('partials/_head') %>
+  <div class="dashboard">
+    <%- include('partials/_sidebar', { activePage: 'balance' }) %>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 data-i18n="bal_title">Cập nhật số dư</h1>
+          <p data-i18n="bal_subtitle">Nhập số tiền mặt và ngân hàng hiện có</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/" class="btn-cancel" style="text-decoration:none;padding:9px 16px;border-radius:8px">
+            <i class="fa-solid fa-arrow-left"></i> <span data-i18n="bal_back">Quay lại</span>
+          </a>
+          <div class="user-info">
+            <i class="fa-solid fa-circle-user"></i>
+            <span><%= username %></span>
+            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <div class="balance-page">
+        <div class="balance-tabs">
+          <% sources.forEach(function(s, i) { %>
+          <button class="balance-tab <%= i===0?'active':'' %>" data-tab="<%= s._id %>">
+            <i class="fa-solid <%= s.icon || 'fa-wallet' %>"></i> <%= s.name %>
+          </button>
+          <% }); %>
+        </div>
+
+        <% sources.forEach(function(s, i) { %>
+        <div class="balance-tab-content" id="tab-<%= s._id %>" style="<%= i===0?'':'display:none' %>">
+          <% if (s.type === 'cash') { %>
+            <div class="denomination-grid">
+              <% var denoms = [1000,2000,5000,10000,20000,50000,100000,200000,500000]; %>
+              <% denoms.forEach(function(d) { %>
+              <div class="denom-row">
+                <span class="denom-label"><%= d.toLocaleString('vi-VN') %> ₫</span>
+                <input class="denom-qty" type="number" data-value="<%= d %>" value="0" min="0">
+              </div>
+              <% }); %>
+            </div>
+            <div class="cash-total">
+              <span data-i18n="cash_total">Tổng tiền mặt:</span> <strong class="cashTotalDisplay">0 ₫</strong>
+            </div>
+          <% } else { %>
+            <div class="balance-card">
+              <label><%= s.name %></label>
+              <input type="text" class="source-display balance-number-input" data-source-id="<%= s._id %>" placeholder="0" autocomplete="off">
+              <input type="hidden" class="source-input" data-source-id="<%= s._id %>">
+            </div>
+          <% } %>
+          <div class="balance-page-actions">
+            <button class="btn-primary source-save" data-source-id="<%= s._id %>" data-source-type="<%= s.type %>">
+              <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="btn_save">Lưu</span>
+            </button>
+          </div>
+        </div>
+        <% }); %>
+
+        <div class="balance-date-row">
+          <i class="fa-solid fa-calendar-day"></i>
+          <span><span data-i18n="record_date">Ngày ghi nhận:</span> <strong id="todayLabel"></strong></span>
+          <input type="hidden" id="balanceDate">
+        </div>
+
+        <div class="history-section">
+          <div class="section-header">
+            <h2 data-i18n="history_title">Lịch sử số dư</h2>
+          </div>
+          <div class="table-wrapper">
+            <table id="historyTable">
+              <thead>
+                <tr>
+                  <th data-i18n="col_date">Ngày</th>
+                  <th data-i18n="col_cash">Tiền mặt</th>
+                  <th data-i18n="col_bank">Ngân hàng</th>
+                  <th>Ví Shopee</th>
+                  <th>Lương</th>
+                  <th data-i18n="col_total">Tổng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty-row">
+                  <td colspan="4"><i class="fa-solid fa-inbox"></i><p data-i18n="no_data">Chưa có dữ liệu</p></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const INIT_CASH = <%= cashBalance %>;
+    const INIT_BANK = <%= bankBalance %>;
+    const INIT_SHOPEE = <%= shopeeBalance %>;
+    const INIT_CASH_DENOMS = <%- JSON.stringify(cashDenoms) %>;
+    const SOURCES = <%- JSON.stringify(sources.map(s=>({id:s._id,name:s.name,type:s.type}))) %>;
+  </script>
+  <%- include('partials/_scripts') %>
+  <script src="/js/balance.js"></script>
+<%- include('partials/_foot') %>
