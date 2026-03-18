@@ -1,2 +1,49 @@
   <script src="/js/i18n.js"></script>
   <script src="/js/theme.js"></script>
+  <script>
+  (function () {
+    // Sidebar nav-group toggle
+    document.querySelectorAll('.nav-group-header').forEach(function (header) {
+      var items = header.nextElementSibling;
+      // Tự mở nếu có sub-item đang active
+      if (items && items.querySelector('.nav-sub-item.active')) {
+        header.classList.add('expanded');
+        items.classList.add('open');
+      }
+      header.addEventListener('click', function () {
+        var isOpen = items.classList.contains('open');
+        header.classList.toggle('expanded', !isOpen);
+        items.classList.toggle('open', !isOpen);
+      });
+    });
+
+    // Set active nav item dựa theo URL hiện tại
+    var path = window.location.pathname;
+    document.querySelectorAll('.nav-sub-item, .nav-item').forEach(function (a) {
+      var href = a.getAttribute('href');
+      if (href === path || (href !== '/' && path.startsWith(href))) {
+        a.classList.add('active');
+        // Mở group cha nếu có
+        var group = a.closest('.nav-group-items');
+        if (group) {
+          group.classList.add('open');
+          var groupHeader = group.previousElementSibling;
+          if (groupHeader) groupHeader.classList.add('expanded');
+        }
+      }
+    });
+    // Trang chủ exact match
+    if (path === '/') {
+      var homeLink = document.querySelector('.nav-sub-item[href="/"]');
+      if (homeLink) {
+        homeLink.classList.add('active');
+        var group = homeLink.closest('.nav-group-items');
+        if (group) {
+          group.classList.add('open');
+          var groupHeader = group.previousElementSibling;
+          if (groupHeader) groupHeader.classList.add('expanded');
+        }
+      }
+    }
+  })();
+  </script>

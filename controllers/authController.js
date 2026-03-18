@@ -1,4 +1,4 @@
-const User = require('../models/User');
+const { User } = require('../db/proxy');
 
 const authController = {
   // GET /login
@@ -55,7 +55,7 @@ const authController = {
     } catch (err) {
       console.error('Register error:', JSON.stringify(err, null, 2), err.message);
       let msg = 'Đã có lỗi xảy ra';
-      if (err.code === 11000) msg = 'Email hoặc tên người dùng đã tồn tại';
+      if (err.code === 11000 || (err.message && err.message.includes('UNIQUE'))) msg = 'Email hoặc tên người dùng đã tồn tại';
       else if (err.name === 'ValidationError') msg = Object.values(err.errors).map(e => e.message).join(', ');
       else if (err.message) msg = err.message;
       return res.render('register', { error: msg });

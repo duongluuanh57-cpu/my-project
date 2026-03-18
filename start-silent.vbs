@@ -3,13 +3,24 @@ Dim dir
 dir = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\") - 1)
 WshShell.CurrentDirectory = dir
 
-' Xoa file .port cu neu co
 Dim fso
 Set fso = CreateObject("Scripting.FileSystemObject")
+
+' Cai node_modules neu chua co
+If Not fso.FolderExists(dir & "\node_modules") Then
+    WshShell.Run "cmd /c npm install", 1, True
+End If
+
+' Tao .env neu chua co
+If Not fso.FileExists(dir & "\.env") Then
+    WshShell.Run "cmd /c node -e ""var c=require('crypto');var s=c.randomBytes(32).toString('hex');var e=c.randomBytes(32).toString('hex');require('fs').writeFileSync('.env','MONGO_URI=mongodb://localhost:27017/QuanLyTaiChinh\nSESSION_SECRET='+s+'\nENCRYPT_SECRET='+e+'\n');""", 0, True
+End If
+
+' Xoa file .port cu neu co
 If fso.FileExists(dir & "\.port") Then fso.DeleteFile dir & "\.port"
 
 ' Start server
-WshShell.Run "cmd /c npm run dev", 0, False
+WshShell.Run "cmd /c node server.js > .server.log 2>&1", 0, False
 
 ' Cho den khi file .port xuat hien
 Dim portFile

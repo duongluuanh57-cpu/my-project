@@ -1,9 +1,4 @@
-const User = require('../models/User');
-const BalanceHistory = require('../models/BalanceHistory');
-const IncomeHistory  = require('../models/IncomeHistory');
-const ExpenseHistory = require('../models/ExpenseHistory');
-const Source         = require('../models/Source');
-const Category        = require('../models/Category');
+const { User, BalanceHistory, IncomeHistory, ExpenseHistory, Source, Category } = require('../db/proxy');
 const { encrypt, decrypt } = require('../utils/crypto');
 
 const homeController = {
