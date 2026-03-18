@@ -17,15 +17,9 @@ if errorlevel 1 (
     pause
     exit /b 1
   )
-  :: Refresh PATH sau khi cài
-  for /f "tokens=*" %%i in ('powershell -Command "[System.Environment]::GetEnvironmentVariable(\"PATH\",\"Machine\")"') do set PATH=%%i;%PATH%
-  where node >nul 2>&1
-  if errorlevel 1 (
-    echo [INFO] Da cai xong. Vui long dong va mo lai start.bat de tiep tuc.
-    pause
-    exit /b 0
-  )
-  echo [INFO] Node.js da duoc cai dat thanh cong.
+  echo [INFO] Da cai xong. Vui long dong va mo lai start.bat de tiep tuc.
+  pause
+  exit /b 0
 )
 
 :: ── Cài dependencies nếu chưa có ─────────────────────────────────────────
@@ -55,16 +49,14 @@ if not exist ".env" (
 :: ── Nếu server cũ vẫn đang chạy thì mở tab đó luôn ──────────────────────
 if exist ".port" (
   set /p OLD_PORT=<.port
-  powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:%OLD_PORT%' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+  powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:%OLD_PORT%' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
   if not errorlevel 1 (
-    echo Server cu van dang chay tai port %OLD_PORT%
+    echo Server dang chay tai port %OLD_PORT%
     start http://localhost:%OLD_PORT%
     exit /b 0
   )
 )
 
-:: ── Khởi động server mới ───────────────────────────────────────────────────
-echo Dang khoi dong server...
+:: ── Khởi động server ───────────────────────────────────────────────────────
 if exist ".port" del ".port"
-
-start "FinanceApp" cmd /k "node server.js"
+node server.js
