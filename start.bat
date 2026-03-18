@@ -1,12 +1,31 @@
 @echo off
 cd /d "%~dp0"
 
-:: ── Kiểm tra Node.js ──────────────────────────────────────────────────────
+:: ── Kiểm tra Node.js, tự cài nếu chưa có ────────────────────────────────
 where node >nul 2>&1
 if errorlevel 1 (
-  echo [LOI] Chua cai Node.js. Tai tai: https://nodejs.org
-  pause
-  exit /b 1
+  echo [INFO] Chua co Node.js. Dang tu dong cai dat...
+  where winget >nul 2>&1
+  if errorlevel 1 (
+    echo [LOI] Khong tim thay winget. Vui long cai Node.js thu cong tai: https://nodejs.org
+    pause
+    exit /b 1
+  )
+  winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+  if errorlevel 1 (
+    echo [LOI] Cai Node.js that bai. Vui long cai thu cong tai: https://nodejs.org
+    pause
+    exit /b 1
+  )
+  :: Refresh PATH sau khi cài
+  for /f "tokens=*" %%i in ('powershell -Command "[System.Environment]::GetEnvironmentVariable(\"PATH\",\"Machine\")"') do set PATH=%%i;%PATH%
+  where node >nul 2>&1
+  if errorlevel 1 (
+    echo [INFO] Da cai xong. Vui long dong va mo lai start.bat de tiep tuc.
+    pause
+    exit /b 0
+  )
+  echo [INFO] Node.js da duoc cai dat thanh cong.
 )
 
 :: ── Cài dependencies nếu chưa có ─────────────────────────────────────────
