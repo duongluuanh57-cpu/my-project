@@ -49,7 +49,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Collect current form values ──
   function collectData() {
-    let cash = 0, bank = 0, shopee = 0, denoms = {};
+    let cash = 0, denoms = {};
+    const sourceValues = {};
+
     // Cash denoms
     const cashTab = document.querySelector('.balance-tab-content');
     if (cashTab) {
@@ -59,12 +61,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         cash += qty * Number(input.dataset.value);
       });
     }
-    // Number sources
-    document.querySelectorAll('.source-input').forEach((inp, i) => {
-      if (i === 0) bank = Number(inp.value) || 0;
-      else shopee = Number(inp.value) || 0;
+    // Number sources — map theo sourceId
+    document.querySelectorAll('.source-input').forEach(inp => {
+      sourceValues[inp.dataset.sourceId] = Number(inp.value) || 0;
     });
-    return { cashBalance: cash, bankBalance: bank, shopeeBalance: shopee, cashDenoms: denoms, date: localDateStr };
+
+    // Tính bank = tổng tất cả number sources (dùng source đầu tiên là bank)
+    const numberSources = (typeof SOURCES !== 'undefined') ? SOURCES.filter(s => s.type !== 'cash') : [];
+    const bank   = numberSources[0] ? (sourceValues[numberSources[0].id] || 0) : 0;
+    const shopee = numberSources[1] ? (sourceValues[numberSources[1].id] || 0) : 0;
+
+    return { cashBalance: cash, bankBalance: bank, shopeeBalance: shopee, cashDenoms: denoms, date: localDateStr, sourceValues };
   }
 
   // ── Lưu vào localStorage khi có thay đổi ──
@@ -143,8 +150,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderHistory(data) {
     const tbody = document.querySelector('#historyTable tbody');
+    const thead = document.querySelector('#historyTable thead tr');
+    // Build dynamic columns từ SOURCES
+    const numberSources = (typeof SOURCES !== 'undefined') ? SOURCES.filter(s => s.type !== 'cash') : [];
+    const cashSource    = (typeof SOURCES !== 'undefined') ? SOURCES.find(s => s.type === 'cash') : null;
+
+    // Render header
+    let thHtml = '<th data-i18n="col_date">Ngày</th>';
+    if (cashSource) thHtml += `<th>${cashSource.name}</th>`;
+    numberSources.forEach(s => { thHtml += `<th>${s.name}</th>`; });
+    thHtml += '<th>Lương</th><th data-i18n="col_total">Tổng</th>';
+    thead.innerHTML = thHtml;
+
     if (!data.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><i class="fa-solid fa-inbox"></i><p data-i18n="no_data">Chưa có dữ liệu</p></td></tr>';
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="${2 + (cashSource?1:0) + numberSources.length + 1}"><i class="fa-solid fa-inbox"></i><p data-i18n="no_data">Chưa có dữ liệu</p></td></tr>`;
       return;
     }
     tbody.innerHTML = data.map(r => {
@@ -153,14 +172,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const salaryCell = r.salary > 0
         ? `<span class="badge-checkin">${Number(r.salary).toLocaleString('vi-VN')} ₫</span>`
         : '<span style="color:#94a3b8">-</span>';
-      return `<tr>
-        <td>${dateStr}</td>
-        <td>${Number(r.cashBalance).toLocaleString('vi-VN')} ₫</td>
-        <td>${Number(r.bankBalance).toLocaleString('vi-VN')} ₫</td>
-        <td>${r.shopeeBalance > 0 ? Number(r.shopeeBalance).toLocaleString('vi-VN') + ' ₫' : '-'}</td>
-        <td>${salaryCell}</td>
-        <td><strong>${Number(r.total).toLocaleString('vi-VN')} ₫</strong></td>
-      </tr>`;
+      let row = `<td>${dateStr}</td>`;
+      if (cashSource) row += `<td>${Number(r.cashBalance).toLocaleString('vi-VN')} ₫</td>`;
+      if (numberSources[0]) row += `<td>${Number(r.bankBalance).toLocaleString('vi-VN')} ₫</td>`;
+      if (numberSources[1]) row += `<td>${r.shopeeBalance > 0 ? Number(r.shopeeBalance).toLocaleString('vi-VN') + ' ₫' : '-'}</td>`;
+      row += `<td>${salaryCell}</td><td><strong>${Number(r.total).toLocaleString('vi-VN')} ₫</strong></td>`;
+      return `<tr>${row}</tr>`;
     }).join('');
   }
 

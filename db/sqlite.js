@@ -33,6 +33,8 @@ function initTables() {
       cashDenoms TEXT,
       income TEXT,
       expense TEXT,
+      resetToken TEXT DEFAULT NULL,
+      resetTokenExpiry TEXT DEFAULT NULL,
       createdAt TEXT DEFAULT (datetime('now')),
       updatedAt TEXT DEFAULT (datetime('now'))
     );
@@ -114,6 +116,8 @@ function makeUserDoc(row) {
     cashDenoms:   row.cashDenoms   || encrypt('{}'),
     income:       row.income       || encrypt('0'),
     expense:      row.expense      || encrypt('0'),
+    resetToken:       row.resetToken       || null,
+    resetTokenExpiry: row.resetTokenExpiry ? new Date(row.resetTokenExpiry) : null,
     comparePassword(plain) { return bcrypt.compare(plain, this.password); },
     setBalances({ cashBalance, bankBalance, shopeeBalance, cashDenoms }) {
       this.cashBalance   = encrypt(String(cashBalance));
@@ -139,11 +143,14 @@ function makeUserDoc(row) {
         username=?, email=?, password=?,
         balance=?, cashBalance=?, bankBalance=?, shopeeBalance=?,
         cashDenoms=?, income=?, expense=?,
+        resetToken=?, resetTokenExpiry=?,
         updatedAt=datetime('now')
         WHERE id=?`).run(
         this.username, this.email, this.password,
         this.balance, this.cashBalance, this.bankBalance, this.shopeeBalance,
         this.cashDenoms, this.income, this.expense,
+        this.resetToken || null,
+        this.resetTokenExpiry ? this.resetTokenExpiry.toISOString() : null,
         this.id
       );
     }
@@ -159,6 +166,10 @@ const UserAdapter = {
     const d = getDb();
     if (query.email) {
       const row = d.prepare('SELECT * FROM users WHERE email=?').get(query.email);
+      return makeUserDoc(row);
+    }
+    if (query.resetToken) {
+      const row = d.prepare('SELECT * FROM users WHERE resetToken=?').get(query.resetToken);
       return makeUserDoc(row);
     }
     if (query.$or) {

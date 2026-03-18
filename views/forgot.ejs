@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Đăng nhập - FinanceApp</title>
+  <title>Quên mật khẩu - FinanceApp</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/auth.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -14,30 +14,27 @@
       <i class="fa-solid fa-wallet"></i>
       <span>FinanceApp</span>
     </div>
-    <h2>Đăng nhập</h2>
-    <p class="auth-sub">Chào mừng trở lại 👋</p>
+    <h2>Quên mật khẩu</h2>
+    <p class="auth-sub">Nhập email để nhận link đặt lại mật khẩu</p>
 
     <% if (error) { %>
       <div class="auth-error"><i class="fa-solid fa-circle-exclamation"></i> <%= error %></div>
     <% } %>
-    <% if (typeof reset !== 'undefined' && reset) { %>
-      <div class="auth-success"><i class="fa-solid fa-circle-check"></i> Đặt lại mật khẩu thành công, hãy đăng nhập.</div>
+    <% if (success) { %>
+      <div class="auth-success"><i class="fa-solid fa-circle-check"></i> <%= success %></div>
     <% } %>
 
-    <form action="/login" method="POST">
+    <% if (!success) { %>
+    <form action="/forgot-password" method="POST">
       <div class="form-group">
         <label>Email</label>
         <input type="email" name="email" placeholder="example@email.com" required autofocus>
       </div>
-      <div class="form-group">
-        <label>Mật khẩu</label>
-        <input type="password" name="password" placeholder="••••••••" required>
-      </div>
-      <button type="submit" class="btn-auth">Đăng nhập</button>
+      <button type="submit" class="btn-auth">Gửi link đặt lại</button>
     </form>
+    <% } %>
 
-    <p class="auth-switch"><a href="/forgot-password">Quên mật khẩu?</a></p>
-    <p class="auth-switch">Chưa có tài khoản? <a href="/register">Đăng ký ngay</a></p>
+    <p class="auth-switch"><a href="/login"><i class="fa-solid fa-arrow-left"></i> Quay lại đăng nhập</a></p>
   </div>
 </body>
 </html>

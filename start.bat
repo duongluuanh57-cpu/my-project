@@ -33,19 +33,19 @@ if not exist ".env" (
   echo File .env da duoc tao tu dong.
 )
 
-:: ── Khởi động server ───────────────────────────────────────────────────────
-echo Dang khoi dong server...
+:: ── Nếu server cũ vẫn đang chạy thì mở tab đó luôn ──────────────────────
+if exist ".port" (
+  set /p OLD_PORT=<.port
+  powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:%OLD_PORT%' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+  if not errorlevel 1 (
+    echo Server cu van dang chay tai port %OLD_PORT%
+    start http://localhost:%OLD_PORT%
+    exit /b 0
+  )
+)
 
+:: ── Khởi động server mới ───────────────────────────────────────────────────
+echo Dang khoi dong server...
 if exist ".port" del ".port"
 
-start /b cmd /c "node server.js > .server.log 2>&1"
-
-echo Cho server khoi dong...
-:wait
-timeout /t 1 /nobreak > nul
-if not exist ".port" goto wait
-
-set /p PORT=<.port
-
-echo Server dang chay tai port %PORT%
-start http://localhost:%PORT%
+start "FinanceApp" cmd /k "node server.js"

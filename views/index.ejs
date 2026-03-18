@@ -32,7 +32,7 @@
         <a href="/income" class="stat-card" style="text-decoration:none">
           <div class="stat-card-top">
             <div>
-              <div class="stat-label" data-i18n="stat_income">Tổng thu nhập</div>
+              <div class="stat-label" data-i18n="stat_income_today">Thu hôm nay</div>
               <div class="stat-value-row">
                 <div class="stat-value" id="incomeValue"><%= income.toLocaleString('vi-VN') %> &#8363;</div>
                 <div class="stat-change" id="incomeChange"></div>
@@ -45,7 +45,7 @@
         <a href="/expense" class="stat-card" style="text-decoration:none">
           <div class="stat-card-top">
             <div>
-              <div class="stat-label" data-i18n="stat_expense">Tổng chi tiêu</div>
+              <div class="stat-label" data-i18n="stat_expense_today">Chi hôm nay</div>
               <div class="stat-value-row">
                 <div class="stat-value" id="expenseValue"><%= expense.toLocaleString('vi-VN') %> &#8363;</div>
                 <div class="stat-change" id="expenseChange"></div>
@@ -59,7 +59,11 @@
       <section class="transactions">
         <div class="section-header">
           <h2 data-i18n="recent_transactions">Giao dịch gần đây</h2>
-          <a href="#" class="link-all" data-i18n="view_all">Xem tất cả</a>
+          <div class="tx-filter-group">
+            <button class="tx-filter active" data-days="0" data-i18n="filter_today">Hôm nay</button>
+            <button class="tx-filter" data-days="7" data-i18n="filter_7d">7 ngày</button>
+            <button class="tx-filter" data-days="30" data-i18n="filter_30d">30 ngày</button>
+          </div>
         </div>
         <div class="table-wrapper">
           <table>
@@ -84,37 +88,38 @@
   <%- include('partials/_scripts') %>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
-  // So sánh tổng tháng này vs tháng trước (dùng cho income/expense)
-  function calcChangeSumMonth(data) {
-    if (!data || data.length === 0) return 'new';
+  // Tính % thay đổi: hôm nay vs hôm qua (income/expense)
+  function calcChangeSumDay(data) {
     var now = new Date();
-    var tm = now.getMonth(), ty = now.getFullYear();
-    var lm = tm === 0 ? 11 : tm - 1, ly = tm === 0 ? ty - 1 : ty;
+    var todayStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
+    var yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    var yesterdayStr = yest.getFullYear() + '-' + ('0'+(yest.getMonth()+1)).slice(-2) + '-' + ('0'+yest.getDate()).slice(-2);
     var cur = 0, prev = 0;
     data.forEach(function(r) {
-      var d = new Date(r.date);
-      if (d.getMonth() === tm && d.getFullYear() === ty) cur += r.total;
-      if (d.getMonth() === lm && d.getFullYear() === ly) prev += r.total;
+      var ds = typeof r.date === 'string' ? r.date.split('T')[0] : '';
+      if (ds === todayStr) cur += r.total;
+      if (ds === yesterdayStr) prev += r.total;
     });
     if (cur === 0 && prev === 0) return null;
-    if (prev === 0) return 'new';
+    if (prev === 0) return cur > 0 ? '+100' : null;
     return ((cur - prev) / prev * 100).toFixed(1);
   }
-  // So sánh giá trị mới nhất vs giá trị tháng trước (dùng cho balance)
-  function calcChangeLatest(data) {
-    if (!data || data.length === 0) return null;
-    var sorted = data.slice().sort(function(a,b){ return new Date(a.date)-new Date(b.date); });
+
+  // Balance: so sánh giá trị hôm nay vs hôm qua
+  function calcChangeBalanceDay(data) {
     var now = new Date();
-    var lm = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    var ly = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    var prev = null;
-    sorted.forEach(function(r) {
-      var d = new Date(r.date);
-      if (d.getMonth() === lm && d.getFullYear() === ly) prev = r.total;
+    var todayStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
+    var yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    var yesterdayStr = yest.getFullYear() + '-' + ('0'+(yest.getMonth()+1)).slice(-2) + '-' + ('0'+yest.getDate()).slice(-2);
+    var curVal = null, prevVal = null;
+    data.forEach(function(r) {
+      var ds = typeof r.date === 'string' ? r.date.split('T')[0] : '';
+      if (ds === todayStr) curVal = r.total;
+      if (ds === yesterdayStr) prevVal = r.total;
     });
-    var cur = sorted[sorted.length - 1].total;
-    if (prev === null || prev === 0) return sorted.length > 0 ? 'new' : null;
-    return ((cur - prev) / prev * 100).toFixed(1);
+    if (curVal === null) return null;
+    if (prevVal === null || prevVal === 0) return curVal > 0 ? '+100' : null;
+    return ((curVal - prevVal) / prevVal * 100).toFixed(1);
   }
   function renderChange(id, pct) {
     var el = document.getElementById(id);
@@ -147,18 +152,24 @@
   var _cachedBalChange = null, _cachedIncChange = null, _cachedExpChange = null;
   fetch('/balance/history').then(function(r){return r.json();}).then(function(d){
     var p=prep(d); makeChart('balanceChart',p.v,'rgba(99,102,241,1)');
-    _cachedBalChange = calcChangeLatest(p.s); renderChange('balanceChange', _cachedBalChange);
+    _cachedBalChange = calcChangeBalanceDay(d); renderChange('balanceChange', _cachedBalChange);
   });
   fetch('/income/history').then(function(r){return r.json();}).then(function(d){
     var checked = d.filter(function(r){ return r.checkedIn; });
     var p=prep(checked); makeChart('incomeChart',p.v,'rgba(22,163,74,1)');
-    _cachedIncChange = calcChangeSumMonth(checked); renderChange('incomeChange', _cachedIncChange);
-    if(p.s.length){ var t=p.s.reduce(function(a,r){return a+r.total;},0); document.getElementById('incomeValue').textContent=t.toLocaleString('vi-VN')+' \u20ab'; }
+    _cachedIncChange = calcChangeSumDay(checked); renderChange('incomeChange', _cachedIncChange);
+    // Hiện tổng hôm nay
+    var now=new Date(), todayStr=now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
+    var todayTotal=checked.filter(function(r){return (typeof r.date==='string'?r.date.split('T')[0]:r.date)===todayStr;}).reduce(function(a,r){return a+r.total;},0);
+    document.getElementById('incomeValue').textContent=todayTotal.toLocaleString('vi-VN')+' \u20ab';
   });
   fetch('/expense/history').then(function(r){return r.json();}).then(function(d){
     var p=prep(d); makeChart('expenseChart',p.v,'rgba(239,68,68,1)');
-    _cachedExpChange = calcChangeSumMonth(p.s); renderChange('expenseChange', _cachedExpChange);
-    if(p.s.length){ var t=p.s.reduce(function(a,r){return a+r.total;},0); document.getElementById('expenseValue').textContent=t.toLocaleString('vi-VN')+' \u20ab'; }
+    _cachedExpChange = calcChangeSumDay(d); renderChange('expenseChange', _cachedExpChange);
+    // Hiện tổng hôm nay
+    var now=new Date(), todayStr=now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
+    var todayTotal=d.filter(function(r){return (typeof r.date==='string'?r.date.split('T')[0]:r.date)===todayStr;}).reduce(function(a,r){return a+r.total;},0);
+    document.getElementById('expenseValue').textContent=todayTotal.toLocaleString('vi-VN')+' \u20ab';
   });
   document.addEventListener('langChanged', function() {
     renderChange('balanceChange', _cachedBalChange);
@@ -167,11 +178,27 @@
     renderRecentTx();
   });
   var _cachedTxRows = [];
+  var _txFilterDays = 0; // 0 = hôm nay
+
+  function filterTxRows(rows, days) {
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    if (days === 0) {
+      return rows.filter(function(r) { return r.date >= todayStart; });
+    }
+    var from = new Date(todayStart.getTime() - (days - 1) * 864e5);
+    return rows.filter(function(r) { return r.date >= from; });
+  }
+
   function renderRecentTx() {
-    if (!_cachedTxRows.length) return;
-    var tbody=document.querySelector('.transactions tbody');
-    tbody.innerHTML='';
-    _cachedTxRows.forEach(function(r){
+    var filtered = filterTxRows(_cachedTxRows, _txFilterDays);
+    var tbody = document.querySelector('.transactions tbody');
+    tbody.innerHTML = '';
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4"><i class="fa-solid fa-inbox"></i><p data-i18n="no_transactions">Chưa có giao dịch nào</p></td></tr>';
+      return;
+    }
+    filtered.forEach(function(r){
       var d=r.date, df=('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
       var lang=localStorage.getItem('lang')||'vi';
       var tr2=translations[lang]||translations['vi'];
@@ -191,6 +218,15 @@
       tbody.appendChild(tr);
     });
   }
+
+  document.querySelectorAll('.tx-filter').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tx-filter').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      _txFilterDays = Number(btn.dataset.days);
+      renderRecentTx();
+    });
+  });
   Promise.all([
     fetch('/balance/history').then(function(r){return r.json();}),
     fetch('/income/history').then(function(r){return r.json();}),
@@ -201,7 +237,7 @@
     res[1].forEach(function(r){ if(r.checkedIn) rows.push({date:new Date(r.date),type:'income',total:r.total}); });
     res[2].forEach(function(r){ rows.push({date:new Date(r.date),type:'expense',total:r.total,note:r.note}); });
     rows.sort(function(a,b){return b.date-a.date;});
-    _cachedTxRows = rows.slice(0, 5);
+    _cachedTxRows = rows;
     renderRecentTx();
   });
   </script>

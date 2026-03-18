@@ -10,6 +10,10 @@ router.post('/login',   authController.login);
 router.get('/register', authController.registerPage);
 router.post('/register', authController.register);
 router.get('/logout',   authController.logout);
+router.get('/forgot-password',  authController.forgotPage);
+router.post('/forgot-password', authController.forgotPassword);
+router.get('/reset-password',   authController.resetPage);
+router.post('/reset-password',  authController.resetPassword);
 
 // Protected routes
 router.get('/', requireLogin, homeController.index);

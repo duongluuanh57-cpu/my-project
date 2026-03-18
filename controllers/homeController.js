@@ -352,15 +352,6 @@ incomeHistoryPage: async (req, res) => {
   },
 
   sourcesPage: async (req, res) => {
-    // Seed nguồn mặc định nếu chưa có
-    const count = await Source.countDocuments({ userId: req.session.userId });
-    if (count === 0) {
-      await Source.insertMany([
-        { userId: req.session.userId, name: 'Tiền mặt',  type: 'cash',   icon: 'fa-money-bill-wave' },
-        { userId: req.session.userId, name: 'Ngân hàng', type: 'number', icon: 'fa-building-columns' },
-        { userId: req.session.userId, name: 'Ví Shopee', type: 'number', icon: 'fa-bag-shopping' }
-      ]);
-    }
     res.render('sources', { title: 'Nguồn tiền', username: req.session.username || '' });
   },
 
@@ -387,17 +378,6 @@ incomeHistoryPage: async (req, res) => {
   },
 
   categoriesPage: async (req, res) => {
-    // Seed danh mục mặc định nếu chưa có
-    const count = await Category.countDocuments({ userId: req.session.userId });
-    if (count === 0) {
-      await Category.insertMany([
-        { userId: req.session.userId, name: 'Ăn uống' },
-        { userId: req.session.userId, name: 'Xăng xe' },
-        { userId: req.session.userId, name: 'Mua sắm' },
-        { userId: req.session.userId, name: 'Hóa đơn' },
-        { userId: req.session.userId, name: 'Giải trí' }
-      ]);
-    }
     res.render('categories', { title: 'Danh mục', username: req.session.username || '' });
   },
 

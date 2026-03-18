@@ -13,7 +13,9 @@ const userSchema = new mongoose.Schema({
   shopeeBalance: { type: String, default: () => encrypt('0') },
   cashDenoms:  { type: String, default: () => encrypt('{}') },
   income:      { type: String, default: () => encrypt('0') },
-  expense:     { type: String, default: () => encrypt('0') }
+  expense:     { type: String, default: () => encrypt('0') },
+  resetToken:       { type: String, default: null },
+  resetTokenExpiry: { type: Date,   default: null }
 }, { timestamps: true });
 
 userSchema.pre('save', async function () {

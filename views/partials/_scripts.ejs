@@ -1,6 +1,25 @@
   <script src="/js/i18n.js"></script>
   <script src="/js/theme.js"></script>
   <script>
+  // Detect server tắt qua SSE
+  (function() {
+    var es = new EventSource('/__ping');
+    var overlay = null;
+    es.onerror = function() {
+      es.close();
+      if (overlay) return;
+      overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = '<div style="background:#1e293b;color:#f1f5f9;padding:40px 48px;border-radius:16px;text-align:center;max-width:360px">'
+        + '<div style="font-size:48px;margin-bottom:16px">🔌</div>'
+        + '<h2 style="margin:0 0 8px;font-size:20px">Server đã tắt</h2>'
+        + '<p style="color:#94a3b8;margin:0 0 24px;font-size:14px">Mở lại start.bat để khởi động server.</p>'
+        + '</div>';
+      document.body.appendChild(overlay);
+    };
+  })();
+  </script>
+  <script>
   (function () {
     // Sidebar nav-group toggle
     document.querySelectorAll('.nav-group-header').forEach(function (header) {
