@@ -5,9 +5,9 @@ const connectDB = require('./config/db');
 const fs = require('fs');
 const app = express();
 
-// Random port mỗi lần start (10000–65000)
-const PORT = Math.floor(Math.random() * 55000) + 10000;
-fs.writeFileSync('.port', String(PORT));
+// Random port khi chạy local, dùng PORT env khi deploy
+const PORT = process.env.PORT || Math.floor(Math.random() * 55000) + 10000;
+if (!process.env.PORT) fs.writeFileSync('.port', String(PORT));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -58,20 +58,27 @@ async function start() {
     });
   });
 
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    const nets = require('os').networkInterfaces();
+    let localIP = 'localhost';
+    for (const iface of Object.values(nets)) {
+      for (const net of iface) {
+        if (net.family === 'IPv4' && !net.internal) { localIP = net.address; break; }
+      }
+    }
     console.log('');
     console.log('  FinanceApp dang chay!');
-    console.log('  URL   : http://localhost:' + PORT);
+    console.log('  Local : http://localhost:' + PORT);
+    console.log('  Mang  : http://' + localIP + ':' + PORT + '  <- dung tren dien thoai');
     console.log('  Mode  : ' + (global.USE_SQLITE ? 'SQLite' : 'MongoDB'));
     console.log('');
     console.log('  Go "help" de xem danh sach lenh.');
     console.log('');
-    // Tự mở browser
     require('child_process').exec('start http://localhost:' + PORT);
   });
 
-  // ── CLI tương tác ──────────────────────────────────────────────────────
-  if (process.stdin.isTTY) {
+  // ── CLI tương tác — chỉ chạy khi local ──────────────────────────────────
+  if (process.stdin.isTTY && !process.env.RENDER) {
     const readline = require('readline');
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' });
     rl.prompt();

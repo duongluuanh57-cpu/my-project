@@ -29,7 +29,7 @@ const homeController = {
         }
       }
 
-      // Tính trực tiếp từ DB để luôn chính xác
+      // Tính trực tiếp từ DB đềEluôn chính xác
       const allExpenses = await ExpenseHistory.find({ userId: req.session.userId });
       const expense = allExpenses.reduce((sum, r) => sum + (Number(decrypt(r.total)) || 0), 0);
 
@@ -81,7 +81,7 @@ const homeController = {
     }
 
     res.render('balance', {
-      title:    'Cập nhật số dư',
+      title:    'Cập nhật sềEdư',
       username: req.session.username || '',
       sources,
       ...balances
@@ -120,7 +120,7 @@ const homeController = {
         },
         $setOnInsert: { date: recordDate }
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     res.json({ success: true });
@@ -171,7 +171,7 @@ const homeController = {
         recordDate.setHours(0, 0, 0, 0);
       }
 
-      // Chỉ lưu nếu đã check in
+      // ChềElưu nếu đã check in
       const existing = await IncomeHistory.findOne({ userId: req.session.userId, date: recordDate });
       if (!existing || !existing.checkedIn) {
         return res.status(403).json({ success: false, message: 'Chua check in ngay nay' });
@@ -185,10 +185,10 @@ const homeController = {
           cashAmount: encrypt('0'),
           cashDenoms: encrypt('{}')
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
-      // Cập nhật tổng income trên User (chỉ để hiển thị)
+      // Cập nhật tổng income trên User (chềEđềEhiển thềE
       const allIncomeRecords = await IncomeHistory.find({ userId: req.session.userId, checkedIn: true });
       const totalIncome = allIncomeRecords.reduce((sum, r) => sum + (Number(decrypt(r.total)) || 0), 0);
       await User.findByIdAndUpdate(req.session.userId, { income: encrypt(String(totalIncome)) });
@@ -232,7 +232,7 @@ incomeHistoryPage: async (req, res) => {
     const record = await IncomeHistory.findOneAndUpdate(
       { userId: req.session.userId, date: recordDate },
       { checkedIn: true },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     res.json({ success: true, checkedIn: record.checkedIn });
   },
@@ -251,7 +251,7 @@ incomeHistoryPage: async (req, res) => {
     await IncomeHistory.findOneAndUpdate(
       { userId: req.session.userId, date: recordDate },
       { checkedIn: false, total: encrypt('0'), bankAmount: encrypt('0'), cashAmount: encrypt('0'), cashDenoms: encrypt('{}') },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     // Cập nhật tổng income trên User
@@ -305,7 +305,7 @@ incomeHistoryPage: async (req, res) => {
       let newBank = balances.bankBalance;
       let newCash = balances.cashBalance;
 
-      // Tìm source để biết type
+      // Tìm source đềEbiết type
       const sourceDoc = await Source.findOne({ _id: source, userId: req.session.userId });
       const sourceType = sourceDoc ? sourceDoc.type : 'number';
       const isCash = sourceType === 'cash';
@@ -328,7 +328,7 @@ incomeHistoryPage: async (req, res) => {
           total:         encrypt(String(newCash + newBank + balances.shopeeBalance)),
           cashDenoms:    encrypt(JSON.stringify(balances.cashDenoms || {}))
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       res.json({ success: true });
